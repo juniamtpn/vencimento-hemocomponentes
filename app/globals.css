@@ -1,0 +1,34 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --hemote-red: #C8102E;
+    --hemote-dark: #1a1a2e;
+    --hemote-card: #16213e;
+    --hemote-border: #0f3460;
+  }
+
+  body {
+    @apply bg-[#1a1a2e] text-white antialiased;
+  }
+}
+
+@layer components {
+  .badge-vencido {
+    @apply bg-red-600 text-white text-xs font-bold px-2 py-0.5 rounded-full;
+  }
+  .badge-hoje {
+    @apply bg-orange-500 text-white text-xs font-bold px-2 py-0.5 rounded-full;
+  }
+  .badge-amanha {
+    @apply bg-yellow-500 text-black text-xs font-bold px-2 py-0.5 rounded-full;
+  }
+  .badge-3dias {
+    @apply bg-blue-500 text-white text-xs font-bold px-2 py-0.5 rounded-full;
+  }
+  .badge-ok {
+    @apply bg-green-600 text-white text-xs font-bold px-2 py-0.5 rounded-full;
+  }
+}
