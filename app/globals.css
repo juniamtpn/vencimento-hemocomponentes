@@ -4,31 +4,89 @@
 
 @layer base {
   :root {
+    --background: 210 20% 98%;
+    --foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 142 72% 29%;
+    --primary: 142 72% 29%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+    --radius: 0.625rem;
+
     --hemote-red: #C8102E;
-    --hemote-dark: #1a1a2e;
-    --hemote-card: #16213e;
-    --hemote-border: #0f3460;
+    --hemote-green: #166534;
+    --hemote-header: #0F172A;
+    --hemote-surface: #FFFFFF;
+  }
+
+  * {
+    border-color: hsl(var(--border));
   }
 
   body {
-    @apply bg-[#1a1a2e] text-white antialiased;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Modern scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #CBD5E1;
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #94A3B8;
   }
 }
 
 @layer components {
+  /* Urgency badges */
   .badge-vencido {
-    @apply bg-red-600 text-white text-xs font-bold px-2 py-0.5 rounded-full;
+    @apply inline-flex items-center gap-1 bg-red-50 text-red-700 border border-red-200 text-xs font-semibold px-2.5 py-0.5 rounded-full;
   }
   .badge-hoje {
-    @apply bg-orange-500 text-white text-xs font-bold px-2 py-0.5 rounded-full;
+    @apply inline-flex items-center gap-1 bg-orange-50 text-orange-700 border border-orange-200 text-xs font-semibold px-2.5 py-0.5 rounded-full;
   }
   .badge-amanha {
-    @apply bg-yellow-500 text-black text-xs font-bold px-2 py-0.5 rounded-full;
+    @apply inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-200 text-xs font-semibold px-2.5 py-0.5 rounded-full;
   }
   .badge-3dias {
-    @apply bg-blue-500 text-white text-xs font-bold px-2 py-0.5 rounded-full;
+    @apply inline-flex items-center gap-1 bg-yellow-50 text-yellow-700 border border-yellow-200 text-xs font-semibold px-2.5 py-0.5 rounded-full;
   }
   .badge-ok {
-    @apply bg-green-600 text-white text-xs font-bold px-2 py-0.5 rounded-full;
+    @apply inline-flex items-center gap-1 bg-green-50 text-green-700 border border-green-200 text-xs font-semibold px-2.5 py-0.5 rounded-full;
+  }
+
+  /* Metric card left accent */
+  .metric-card-red    { @apply border-l-4 border-l-red-500; }
+  .metric-card-orange { @apply border-l-4 border-l-orange-500; }
+  .metric-card-amber  { @apply border-l-4 border-l-amber-500; }
+  .metric-card-yellow { @apply border-l-4 border-l-yellow-500; }
+  .metric-card-green  { @apply border-l-4 border-l-green-500; }
+
+  /* Page fade-in */
+  .page-enter {
+    animation: fadeInUp 0.25s ease-out both;
+  }
+
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
 }
