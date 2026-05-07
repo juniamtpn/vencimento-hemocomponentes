@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.4.2",
-    "@libsql/client": "^0.6.0",
+    "@libsql/client": "^0.17.3",
     "@radix-ui/react-progress": "^1.1.8",
     "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-separator": "^1.1.8",
