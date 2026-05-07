@@ -7,7 +7,7 @@ export const agencias = sqliteTable("agencias", {
   codigo: text("codigo").notNull().unique(),
   liderancaNome: text("lideranca_nome").notNull(),
   liderancaTelefone: text("lideranca_telefone"),
-  googleDriveFolderId: text("google_drive_folder_id"),
+  onedriveFolderId: text("onedrive_folder_id"),
   createdAt: integer("created_at")
     .notNull()
     .default(sql`(unixepoch())`),

@@ -15,7 +15,7 @@ export interface Agencia {
   codigo: string;
   liderancaNome: string;
   liderancaTelefone: string | null;
-  googleDriveFolderId: string | null;
+  onedriveFolderId: string | null;
   createdAt: number;
 }
 

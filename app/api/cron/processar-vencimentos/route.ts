@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
   const resultados: { agencia: string; status: string; bolsas?: number }[] = [];
 
   for (const agencia of todasAgencias) {
-    if (!agencia.googleDriveFolderId) {
+    if (!agencia.onedriveFolderId) {
       semArquivo.push(agencia.nome);
       await db.insert(registrosDiarios).values({
         id: nanoid(),
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-      const arquivos = await listarExcelsDaPasta(agencia.googleDriveFolderId);
+      const arquivos = await listarExcelsDaPasta(agencia.onedriveFolderId);
 
       if (arquivos.length === 0) {
         semArquivo.push(agencia.nome);
