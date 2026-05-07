@@ -1,10 +1,11 @@
 "use client";
 
+import { Suspense } from "react";
 import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 
-export default function LoginPage() {
+function LoginForm() {
   const searchParams = useSearchParams();
   const error = searchParams.get("error");
   const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
@@ -42,13 +43,10 @@ export default function LoginPage() {
       </div>
 
       <div className="relative w-full max-w-sm px-4">
-        {/* Card */}
         <div className="bg-white rounded-2xl shadow-2xl shadow-black/40 border border-slate-200/10 overflow-hidden">
-          {/* Top accent bar */}
           <div className="h-1 bg-gradient-to-r from-[#C8102E] via-[#E8284A] to-[#C8102E]" />
 
           <div className="p-8">
-            {/* Logo */}
             <div className="flex flex-col items-center mb-8">
               <div className="w-14 h-14 bg-[#C8102E] rounded-2xl flex items-center justify-center shadow-lg shadow-red-900/30 mb-4">
                 <svg viewBox="0 0 24 24" fill="currentColor" className="w-7 h-7 text-white">
@@ -70,7 +68,6 @@ export default function LoginPage() {
               </div>
             )}
 
-            {/* Microsoft button */}
             <button
               onClick={() => signIn("azure-ad", { callbackUrl: "/dashboard" })}
               className="w-full flex items-center justify-center gap-3 bg-[#0078D4] hover:bg-[#106EBE] active:bg-[#005A9E] text-white font-semibold py-3 px-4 rounded-xl transition-all duration-150 shadow-sm shadow-blue-900/20"
@@ -88,9 +85,7 @@ export default function LoginPage() {
               <div className="mt-6">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="flex-1 h-px bg-slate-200" />
-                  <span className="text-slate-400 text-xs font-medium uppercase tracking-wider">
-                    demonstração
-                  </span>
+                  <span className="text-slate-400 text-xs font-medium uppercase tracking-wider">demonstração</span>
                   <div className="flex-1 h-px bg-slate-200" />
                 </div>
 
@@ -110,38 +105,21 @@ export default function LoginPage() {
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-800 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#C8102E]/30 focus:border-[#C8102E] transition-all"
                   />
                   {demoError && (
-                    <p className="text-red-600 text-xs flex items-center gap-1">
-                      <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z" />
-                      </svg>
-                      {demoError}
-                    </p>
+                    <p className="text-red-600 text-xs">{demoError}</p>
                   )}
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full bg-[#C8102E] hover:bg-[#a50d24] active:bg-[#8b0b1e] disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl transition-all duration-150 text-sm shadow-sm shadow-red-900/20"
+                    className="w-full bg-[#C8102E] hover:bg-[#a50d24] disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl transition-all duration-150 text-sm"
                   >
-                    {loading ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                        </svg>
-                        Entrando...
-                      </span>
-                    ) : "Entrar (Demo)"}
+                    {loading ? "Entrando..." : "Entrar (Demo)"}
                   </button>
                 </form>
-
-                <p className="mt-3 text-center text-xs text-slate-400">
-                  admin@demo.com · demo123
-                </p>
+                <p className="mt-3 text-center text-xs text-slate-400">admin@demo.com · demo123</p>
               </div>
             )}
           </div>
 
-          {/* Footer */}
           <div className="px-8 pb-6 text-center">
             <p className="text-xs text-slate-400">
               Acesso restrito a colaboradores do HEMOTE.{" "}
@@ -157,5 +135,13 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }
