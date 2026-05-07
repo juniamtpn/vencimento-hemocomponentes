@@ -61,7 +61,7 @@ async function seed() {
         codigo: ag.codigo,
         liderancaNome: ag.liderancaNome,
         liderancaTelefone: ag.liderancaTelefone ?? null,
-        googleDriveFolderId: null,
+        onedriveFolderId: null,
       })
       .onConflictDoNothing();
 
@@ -70,7 +70,7 @@ async function seed() {
 
   console.log("\n✅ Seed concluído!");
   console.log(
-    "\n⚠️  Próximo passo: atualize google_drive_folder_id para cada agência."
+    "\n⚠️  Próximo passo: atualize onedrive_folder_id para cada agência."
   );
   console.log(
     "   Use o Drizzle Studio (npm run db:studio) ou atualize diretamente no Turso."
