@@ -26,6 +26,7 @@ interface AgenciaOption {
   id: string;
   nome: string;
   codigo: string;
+  liderancaNome: string;
 }
 
 interface Props {
@@ -40,23 +41,32 @@ const PERFIL_LABEL: Record<string, string> = {
   viewer: "Viewer",
 };
 
+type Tab = "pendentes" | "usuarios" | "agencias";
+
 export default function AdminView({ pendentes, usuarios, agencias }: Props) {
   const router = useRouter();
-  const [tab, setTab] = useState<"pendentes" | "usuarios">(
-    pendentes.length > 0 ? "pendentes" : "usuarios"
-  );
+
+  // ── tabs ──────────────────────────────────────────────────
+  const [tab, setTab] = useState<Tab>(pendentes.length > 0 ? "pendentes" : "usuarios");
+
+  // ── users ─────────────────────────────────────────────────
   const [processing, setProcessing] = useState<string | null>(null);
   const [perfisAprov, setPerfisAprov] = useState<Record<string, string>>({});
   const [editandoId, setEditandoId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({
-    nome: "",
-    email: "",
-    perfil: "viewer",
-    agenciaIds: [] as string[],
-  });
+  const [editForm, setEditForm] = useState({ nome: "", email: "", perfil: "viewer", agenciaIds: [] as string[] });
   const [confirmExcluir, setConfirmExcluir] = useState<string | null>(null);
   const [erroModal, setErroModal] = useState<string | null>(null);
 
+  // ── agencies ──────────────────────────────────────────────
+  const [agenciasList, setAgenciasList] = useState<AgenciaOption[]>(agencias);
+  const [processingAg, setProcessingAg] = useState(false);
+  const [criandoAgencia, setCriandoAgencia] = useState(false);
+  const [editandoAgenciaId, setEditandoAgenciaId] = useState<string | null>(null);
+  const [confirmExcluirAgenciaId, setConfirmExcluirAgenciaId] = useState<string | null>(null);
+  const [agenciaForm, setAgenciaForm] = useState({ codigo: "", nome: "" });
+  const [erroAgencia, setErroAgencia] = useState<string | null>(null);
+
+  // ── user helpers ──────────────────────────────────────────
   async function aprovar(id: string) {
     setProcessing(id);
     await fetch(`/api/admin/aprovar/${id}`, {
@@ -75,14 +85,9 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
     router.refresh();
   }
 
-  function abrirEdicao(u: UsuarioInfo) {
+  function abrirEdicaoUsuario(u: UsuarioInfo) {
     setEditandoId(u.id);
-    setEditForm({
-      nome: u.nome,
-      email: u.email,
-      perfil: u.perfil,
-      agenciaIds: u.agenciaIds,
-    });
+    setEditForm({ nome: u.nome, email: u.email, perfil: u.perfil, agenciaIds: u.agenciaIds });
     setErroModal(null);
   }
 
@@ -95,7 +100,7 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
     }));
   }
 
-  async function salvarEdicao() {
+  async function salvarEdicaoUsuario() {
     if (!editandoId) return;
     setProcessing(editandoId);
     setErroModal(null);
@@ -114,7 +119,7 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
     setProcessing(null);
   }
 
-  async function excluir(id: string) {
+  async function excluirUsuario(id: string) {
     setProcessing(id);
     await fetch(`/api/admin/usuarios/${id}`, { method: "DELETE" });
     setConfirmExcluir(null);
@@ -122,52 +127,98 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
     router.refresh();
   }
 
-  const nomeConfirmacao = confirmExcluir
-    ? usuarios.find((u) => u.id === confirmExcluir)?.nome
-    : null;
+  // ── agency helpers ────────────────────────────────────────
+  function abrirCriarAgencia() {
+    setAgenciaForm({ codigo: "", nome: "" });
+    setErroAgencia(null);
+    setCriandoAgencia(true);
+  }
+
+  function abrirEdicaoAgencia(ag: AgenciaOption) {
+    setAgenciaForm({ codigo: ag.codigo, nome: ag.nome === ag.codigo ? "" : ag.nome });
+    setErroAgencia(null);
+    setEditandoAgenciaId(ag.id);
+  }
+
+  async function salvarAgencia() {
+    setProcessingAg(true);
+    setErroAgencia(null);
+    const isEdit = !!editandoAgenciaId;
+    const url = isEdit ? `/api/admin/agencias/${editandoAgenciaId}` : "/api/admin/agencias";
+    const res = await fetch(url, {
+      method: isEdit ? "PATCH" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        codigo: agenciaForm.codigo.trim().toUpperCase(),
+        nome: agenciaForm.nome.trim() || agenciaForm.codigo.trim().toUpperCase(),
+      }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      setErroAgencia(data.error ?? "Erro ao salvar.");
+    } else {
+      const data = await res.json();
+      if (isEdit) {
+        setAgenciasList((prev) =>
+          prev.map((ag) =>
+            ag.id === editandoAgenciaId
+              ? { ...ag, codigo: data.agencia.codigo, nome: data.agencia.nome }
+              : ag
+          )
+        );
+        setEditandoAgenciaId(null);
+      } else {
+        setAgenciasList((prev) =>
+          [...prev, data.agencia].sort((a, b) => a.codigo.localeCompare(b.codigo))
+        );
+        setCriandoAgencia(false);
+      }
+    }
+    setProcessingAg(false);
+  }
+
+  async function excluirAgencia(id: string) {
+    setProcessingAg(true);
+    const res = await fetch(`/api/admin/agencias/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = await res.json();
+      setErroAgencia(data.error ?? "Erro ao excluir.");
+    } else {
+      setAgenciasList((prev) => prev.filter((ag) => ag.id !== id));
+      setConfirmExcluirAgenciaId(null);
+    }
+    setProcessingAg(false);
+  }
+
+  const nomeConfirmacaoUsuario = confirmExcluir ? usuarios.find((u) => u.id === confirmExcluir)?.nome : null;
+  const agenciaParaExcluir = confirmExcluirAgenciaId ? agenciasList.find((a) => a.id === confirmExcluirAgenciaId) : null;
 
   return (
     <>
       {/* Tab bar */}
       <div className="flex gap-1 bg-slate-100 p-1 rounded-lg w-fit">
-        <button
-          onClick={() => setTab("pendentes")}
-          className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-            tab === "pendentes"
-              ? "bg-white shadow-sm text-slate-800"
-              : "text-slate-500 hover:text-slate-700"
-          }`}
-        >
+        <TabButton active={tab === "pendentes"} onClick={() => setTab("pendentes")}>
           Solicitações
           {pendentes.length > 0 && (
             <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold">
               {pendentes.length}
             </span>
           )}
-        </button>
-        <button
-          onClick={() => setTab("usuarios")}
-          className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-            tab === "usuarios"
-              ? "bg-white shadow-sm text-slate-800"
-              : "text-slate-500 hover:text-slate-700"
-          }`}
-        >
+        </TabButton>
+        <TabButton active={tab === "usuarios"} onClick={() => setTab("usuarios")}>
           Usuários
           <span className="text-xs text-slate-400 font-normal">{usuarios.length}</span>
-        </button>
+        </TabButton>
+        <TabButton active={tab === "agencias"} onClick={() => setTab("agencias")}>
+          Agências
+          <span className="text-xs text-slate-400 font-normal">{agenciasList.length}</span>
+        </TabButton>
       </div>
 
-      {/* PENDENTES */}
+      {/* ── PENDENTES ─────────────────────────────────────── */}
       {tab === "pendentes" && (
         pendentes.length === 0 ? (
-          <div className="rounded-xl border border-slate-200 bg-white p-10 text-center">
-            <svg className="w-10 h-10 text-green-400 mx-auto mb-3" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-            </svg>
-            <p className="text-slate-500 text-sm font-medium">Nenhuma solicitação pendente</p>
-            <p className="text-slate-400 text-xs mt-1">Todas as solicitações foram processadas.</p>
-          </div>
+          <EmptyState icon="check" title="Nenhuma solicitação pendente" sub="Todas as solicitações foram processadas." />
         ) : (
           <div className="space-y-3">
             {pendentes.map((u) => (
@@ -198,21 +249,15 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
                       <option value="lideranca">Liderança</option>
                       <option value="admin">Admin</option>
                     </select>
-                    <button
-                      onClick={() => aprovar(u.id)}
-                      disabled={processing === u.id}
-                      className="flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50"
-                    >
+                    <button onClick={() => aprovar(u.id)} disabled={processing === u.id}
+                      className="flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50">
                       <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
                       </svg>
                       {processing === u.id ? "Aprovando…" : "Aprovar"}
                     </button>
-                    <button
-                      onClick={() => rejeitar(u.id)}
-                      disabled={processing === u.id}
-                      className="flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-red-600 border border-red-200 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                    >
+                    <button onClick={() => rejeitar(u.id)} disabled={processing === u.id}
+                      className="flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-red-600 border border-red-200 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50">
                       <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
                       </svg>
@@ -226,22 +271,20 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
         )
       )}
 
-      {/* USUARIOS */}
+      {/* ── USUÁRIOS ──────────────────────────────────────── */}
       {tab === "usuarios" && (
         usuarios.length === 0 ? (
-          <div className="rounded-xl border border-slate-200 bg-white p-10 text-center">
-            <p className="text-slate-500 text-sm">Nenhum usuário cadastrado.</p>
-          </div>
+          <EmptyState icon="user" title="Nenhum usuário cadastrado." />
         ) : (
           <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm min-w-[600px]">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50">
-                    <th className="text-left px-4 py-3 text-slate-500 text-[11px] font-semibold uppercase tracking-wide">Usuário</th>
-                    <th className="text-left px-4 py-3 text-slate-500 text-[11px] font-semibold uppercase tracking-wide hidden md:table-cell">Agências</th>
-                    <th className="text-left px-4 py-3 text-slate-500 text-[11px] font-semibold uppercase tracking-wide">Perfil</th>
-                    <th className="text-left px-4 py-3 text-slate-500 text-[11px] font-semibold uppercase tracking-wide">Status</th>
+                    <Th>Usuário</Th>
+                    <Th className="hidden md:table-cell">Agências</Th>
+                    <Th>Perfil</Th>
+                    <Th>Status</Th>
                     <th className="px-4 py-3 w-20" />
                   </tr>
                 </thead>
@@ -252,44 +295,23 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
                         <p className="font-medium text-slate-800">{u.nome}</p>
                         <p className="text-xs text-slate-400">{u.email}</p>
                       </td>
-                      <td className="px-4 py-3 text-xs text-slate-500 hidden md:table-cell">
-                        {u.agenciasLabel}
-                      </td>
+                      <td className="px-4 py-3 text-xs text-slate-500 hidden md:table-cell">{u.agenciasLabel}</td>
                       <td className="px-4 py-3">
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border border-slate-200 text-slate-600">
                           {PERFIL_LABEL[u.perfil] ?? u.perfil}
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
-                          u.status === "aprovado"
-                            ? "bg-green-50 text-green-700 border border-green-200"
-                            : "bg-red-50 text-red-600 border border-red-200"
-                        }`}>
-                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${u.status === "aprovado" ? "bg-green-500" : "bg-red-500"}`} />
-                          {u.status === "aprovado" ? "Ativo" : "Rejeitado"}
-                        </span>
+                        <StatusBadge status={u.status} />
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1 justify-end">
-                          <button
-                            onClick={() => abrirEdicao(u)}
-                            title="Editar"
-                            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={() => setConfirmExcluir(u.id)}
-                            title="Excluir"
-                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
-                            </svg>
-                          </button>
+                          <IconButton title="Editar" onClick={() => abrirEdicaoUsuario(u)}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125" />
+                          </IconButton>
+                          <IconButton title="Excluir" danger onClick={() => setConfirmExcluir(u.id)}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                          </IconButton>
                         </div>
                       </td>
                     </tr>
@@ -301,176 +323,345 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
         )
       )}
 
-      {/* Modal: Editar usuário */}
-      {editandoId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setEditandoId(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6 space-y-5" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-semibold text-slate-800">Editar usuário</h3>
-              <button onClick={() => setEditandoId(null)} className="text-slate-400 hover:text-slate-600 transition-colors">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">Nome</label>
-                <input
-                  type="text"
-                  value={editForm.nome}
-                  onChange={(e) => setEditForm({ ...editForm, nome: e.target.value })}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">Email</label>
-                <input
-                  type="email"
-                  value={editForm.email}
-                  onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">Perfil</label>
-                <select
-                  value={editForm.perfil}
-                  onChange={(e) => setEditForm({ ...editForm, perfil: e.target.value, agenciaIds: [] })}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
-                >
-                  <option value="viewer">Viewer</option>
-                  <option value="lideranca">Liderança</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </div>
-
-              {/* Agency selection — multi for liderança, single for viewer */}
-              {editForm.perfil === "lideranca" ? (
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">Agências</label>
-                    {editForm.agenciaIds.length > 0 && (
-                      <span className="text-[11px] text-slate-400">{editForm.agenciaIds.length} selecionada{editForm.agenciaIds.length !== 1 ? "s" : ""}</span>
-                    )}
-                  </div>
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 divide-y divide-slate-100 max-h-52 overflow-y-auto">
-                    {agencias.map((a) => {
-                      const checked = editForm.agenciaIds.includes(a.id);
-                      return (
-                        <label
-                          key={a.id}
-                          className={`flex items-center gap-2.5 px-3 py-2.5 cursor-pointer transition-colors ${
-                            checked ? "bg-slate-100" : "hover:bg-slate-100"
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleAgencia(a.id)}
-                            className="w-3.5 h-3.5 rounded border-slate-300 text-slate-700 accent-slate-700"
-                          />
-                          <span className="text-sm text-slate-700">
-                            <span className="font-medium">{a.codigo}</span>
-                            {a.nome !== a.codigo && (
-                              <span className="text-slate-400"> — {a.nome}</span>
-                            )}
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">Agência</label>
-                  <select
-                    value={editForm.agenciaIds[0] ?? ""}
-                    onChange={(e) =>
-                      setEditForm({
-                        ...editForm,
-                        agenciaIds: e.target.value ? [e.target.value] : [],
-                      })
-                    }
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
-                  >
-                    <option value="">Nenhuma</option>
-                    {agencias.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.nome !== a.codigo ? `${a.codigo} — ${a.nome}` : a.nome}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-
-            {erroModal && (
-              <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
-                </svg>
-                {erroModal}
-              </div>
-            )}
-
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setEditandoId(null)}
-                disabled={processing === editandoId}
-                className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-50"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={salvarEdicao}
-                disabled={processing === editandoId}
-                className="px-4 py-2 text-sm font-medium text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors disabled:opacity-50"
-              >
-                {processing === editandoId ? "Salvando…" : "Salvar alterações"}
-              </button>
-            </div>
+      {/* ── AGÊNCIAS ──────────────────────────────────────── */}
+      {tab === "agencias" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-slate-500">{agenciasList.length} agência{agenciasList.length !== 1 ? "s" : ""} cadastrada{agenciasList.length !== 1 ? "s" : ""}</p>
+            <button
+              onClick={abrirCriarAgencia}
+              className="flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              Nova agência
+            </button>
           </div>
+
+          {agenciasList.length === 0 ? (
+            <EmptyState icon="building" title="Nenhuma agência cadastrada." sub='Clique em "Nova agência" para começar.' />
+          ) : (
+            <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm min-w-[400px]">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50">
+                      <Th>Sigla</Th>
+                      <Th>Nome</Th>
+                      <Th className="hidden md:table-cell">Liderança</Th>
+                      <th className="px-4 py-3 w-20" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {agenciasList.map((ag) => (
+                      <tr key={ag.id} className="hover:bg-slate-50/60 transition-colors">
+                        <td className="px-4 py-3">
+                          <span className="font-mono font-semibold text-slate-800 text-[13px]">{ag.codigo}</span>
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">
+                          {ag.nome && ag.nome !== ag.codigo ? ag.nome : <span className="text-slate-300">—</span>}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-500 hidden md:table-cell">
+                          {ag.liderancaNome || <span className="text-slate-300">—</span>}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1 justify-end">
+                            <IconButton title="Editar" onClick={() => abrirEdicaoAgencia(ag)}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125" />
+                            </IconButton>
+                            <IconButton title="Excluir" danger onClick={() => { setErroAgencia(null); setConfirmExcluirAgenciaId(ag.id); }}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                            </IconButton>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Modal: Confirmar exclusão */}
-      {confirmExcluir && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setConfirmExcluir(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0 mt-0.5">
-                <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-                </svg>
-              </div>
-              <div>
-                <p className="font-semibold text-slate-800">Excluir usuário</p>
-                <p className="text-sm text-slate-500 mt-0.5">
-                  Tem certeza que deseja excluir <span className="font-medium text-slate-700">{nomeConfirmacao}</span>? Esta ação não pode ser desfeita.
-                </p>
-              </div>
-            </div>
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setConfirmExcluir(null)}
-                className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={() => excluir(confirmExcluir)}
-                disabled={processing === confirmExcluir}
-                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50"
-              >
-                {processing === confirmExcluir ? "Excluindo…" : "Sim, excluir"}
-              </button>
-            </div>
+      {/* ── Modal: editar usuário ─────────────────────────── */}
+      {editandoId && (
+        <Modal onClose={() => setEditandoId(null)} title="Editar usuário">
+          <div className="space-y-3">
+            <Field label="Nome">
+              <input type="text" value={editForm.nome}
+                onChange={(e) => setEditForm({ ...editForm, nome: e.target.value })}
+                className={inputCls} />
+            </Field>
+            <Field label="Email">
+              <input type="email" value={editForm.email}
+                onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                className={inputCls} />
+            </Field>
+            <Field label="Perfil">
+              <select value={editForm.perfil}
+                onChange={(e) => setEditForm({ ...editForm, perfil: e.target.value, agenciaIds: [] })}
+                className={inputCls}>
+                <option value="viewer">Viewer</option>
+                <option value="lideranca">Liderança</option>
+                <option value="admin">Admin</option>
+              </select>
+            </Field>
+            {editForm.perfil === "lideranca" ? (
+              <Field label="Agências" extra={editForm.agenciaIds.length > 0 ? `${editForm.agenciaIds.length} selecionada${editForm.agenciaIds.length !== 1 ? "s" : ""}` : undefined}>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 divide-y divide-slate-100 max-h-52 overflow-y-auto">
+                  {agenciasList.map((a) => {
+                    const checked = editForm.agenciaIds.includes(a.id);
+                    return (
+                      <label key={a.id} className={`flex items-center gap-2.5 px-3 py-2.5 cursor-pointer transition-colors ${checked ? "bg-slate-100" : "hover:bg-slate-100"}`}>
+                        <input type="checkbox" checked={checked} onChange={() => toggleAgencia(a.id)}
+                          className="w-3.5 h-3.5 rounded border-slate-300 accent-slate-700" />
+                        <span className="text-sm text-slate-700">
+                          <span className="font-medium">{a.codigo}</span>
+                          {a.nome && a.nome !== a.codigo && <span className="text-slate-400"> — {a.nome}</span>}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </Field>
+            ) : (
+              <Field label="Agência">
+                <select value={editForm.agenciaIds[0] ?? ""}
+                  onChange={(e) => setEditForm({ ...editForm, agenciaIds: e.target.value ? [e.target.value] : [] })}
+                  className={inputCls}>
+                  <option value="">Nenhuma</option>
+                  {agenciasList.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.nome && a.nome !== a.codigo ? `${a.codigo} — ${a.nome}` : a.codigo}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
           </div>
-        </div>
+          {erroModal && <ErrorBox msg={erroModal} />}
+          <ModalFooter
+            onCancel={() => setEditandoId(null)}
+            onConfirm={salvarEdicaoUsuario}
+            loading={processing === editandoId}
+            cancelDisabled={processing === editandoId}
+          />
+        </Modal>
+      )}
+
+      {/* ── Modal: criar / editar agência ────────────────── */}
+      {(criandoAgencia || !!editandoAgenciaId) && (
+        <Modal
+          onClose={() => { setCriandoAgencia(false); setEditandoAgenciaId(null); }}
+          title={editandoAgenciaId ? "Editar agência" : "Nova agência"}
+        >
+          <div className="space-y-3">
+            <Field label="Sigla *">
+              <input
+                type="text"
+                value={agenciaForm.codigo}
+                onChange={(e) => setAgenciaForm({ ...agenciaForm, codigo: e.target.value })}
+                placeholder="Ex: HMT"
+                className={inputCls}
+                autoFocus
+              />
+              <p className="text-[11px] text-slate-400 mt-1">Identificador usado no sistema. Será convertido para maiúsculas.</p>
+            </Field>
+            <Field label="Nome">
+              <input
+                type="text"
+                value={agenciaForm.nome}
+                onChange={(e) => setAgenciaForm({ ...agenciaForm, nome: e.target.value })}
+                placeholder="Opcional — preencha depois se preferir"
+                className={inputCls}
+              />
+            </Field>
+          </div>
+          {erroAgencia && <ErrorBox msg={erroAgencia} />}
+          <ModalFooter
+            onCancel={() => { setCriandoAgencia(false); setEditandoAgenciaId(null); }}
+            onConfirm={salvarAgencia}
+            loading={processingAg}
+            confirmLabel={editandoAgenciaId ? "Salvar alterações" : "Criar agência"}
+            confirmDisabled={!agenciaForm.codigo.trim()}
+          />
+        </Modal>
+      )}
+
+      {/* ── Modal: excluir usuário ────────────────────────── */}
+      {confirmExcluir && (
+        <ConfirmDeleteModal
+          title="Excluir usuário"
+          description={<>Tem certeza que deseja excluir <span className="font-medium text-slate-700">{nomeConfirmacaoUsuario}</span>? Esta ação não pode ser desfeita.</>}
+          loading={processing === confirmExcluir}
+          onCancel={() => setConfirmExcluir(null)}
+          onConfirm={() => excluirUsuario(confirmExcluir)}
+        />
+      )}
+
+      {/* ── Modal: excluir agência ────────────────────────── */}
+      {confirmExcluirAgenciaId && (
+        <ConfirmDeleteModal
+          title="Excluir agência"
+          description={<>Tem certeza que deseja excluir a agência <span className="font-medium text-slate-700">{agenciaParaExcluir?.codigo}</span>? Esta ação não pode ser desfeita.</>}
+          loading={processingAg}
+          onCancel={() => setConfirmExcluirAgenciaId(null)}
+          onConfirm={() => excluirAgencia(confirmExcluirAgenciaId)}
+          error={erroAgencia}
+        />
       )}
     </>
+  );
+}
+
+// ── Small reusable primitives ─────────────────────────────────
+
+const inputCls = "w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400";
+
+function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button onClick={onClick}
+      className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${active ? "bg-white shadow-sm text-slate-800" : "text-slate-500 hover:text-slate-700"}`}>
+      {children}
+    </button>
+  );
+}
+
+function Th({ children, className = "" }: { children?: React.ReactNode; className?: string }) {
+  return <th className={`text-left px-4 py-3 text-slate-500 text-[11px] font-semibold uppercase tracking-wide ${className}`}>{children}</th>;
+}
+
+function StatusBadge({ status }: { status: "aprovado" | "rejeitado" }) {
+  const ok = status === "aprovado";
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${ok ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-600 border border-red-200"}`}>
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${ok ? "bg-green-500" : "bg-red-500"}`} />
+      {ok ? "Ativo" : "Rejeitado"}
+    </span>
+  );
+}
+
+function IconButton({ children, title, danger, onClick }: { children: React.ReactNode; title: string; danger?: boolean; onClick: () => void }) {
+  return (
+    <button onClick={onClick} title={title}
+      className={`p-1.5 rounded-md transition-colors ${danger ? "text-slate-400 hover:text-red-600 hover:bg-red-50" : "text-slate-400 hover:text-slate-700 hover:bg-slate-100"}`}>
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">{children}</svg>
+    </button>
+  );
+}
+
+function Field({ label, extra, children }: { label: string; extra?: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">{label}</label>
+        {extra && <span className="text-[11px] text-slate-400">{extra}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function ErrorBox({ msg }: { msg: string }) {
+  return (
+    <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+      <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+      </svg>
+      {msg}
+    </div>
+  );
+}
+
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6 space-y-5" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-semibold text-slate-800">{title}</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function ModalFooter({
+  onCancel, onConfirm, loading, confirmLabel = "Salvar alterações", confirmDisabled = false, cancelDisabled = false,
+}: {
+  onCancel: () => void; onConfirm: () => void; loading: boolean;
+  confirmLabel?: string; confirmDisabled?: boolean; cancelDisabled?: boolean;
+}) {
+  return (
+    <div className="flex gap-2 justify-end">
+      <button onClick={onCancel} disabled={cancelDisabled}
+        className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-50">
+        Cancelar
+      </button>
+      <button onClick={onConfirm} disabled={loading || confirmDisabled}
+        className="px-4 py-2 text-sm font-medium text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors disabled:opacity-50">
+        {loading ? "Salvando…" : confirmLabel}
+      </button>
+    </div>
+  );
+}
+
+function ConfirmDeleteModal({ title, description, loading, onCancel, onConfirm, error }: {
+  title: string; description: React.ReactNode; loading: boolean;
+  onCancel: () => void; onConfirm: () => void; error?: string | null;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onCancel}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0 mt-0.5">
+            <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+            </svg>
+          </div>
+          <div>
+            <p className="font-semibold text-slate-800">{title}</p>
+            <p className="text-sm text-slate-500 mt-0.5">{description}</p>
+          </div>
+        </div>
+        {error && <ErrorBox msg={error} />}
+        <div className="flex gap-2 justify-end">
+          <button onClick={onCancel}
+            className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">
+            Cancelar
+          </button>
+          <button onClick={onConfirm} disabled={loading}
+            className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50">
+            {loading ? "Excluindo…" : "Sim, excluir"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EmptyState({ icon, title, sub }: { icon: string; title: string; sub?: string }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-10 text-center">
+      {icon === "check" && (
+        <svg className="w-10 h-10 text-green-400 mx-auto mb-3" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+        </svg>
+      )}
+      {icon === "building" && (
+        <svg className="w-10 h-10 text-slate-300 mx-auto mb-3" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
+        </svg>
+      )}
+      <p className="text-slate-500 text-sm font-medium">{title}</p>
+      {sub && <p className="text-slate-400 text-xs mt-1">{sub}</p>}
+    </div>
   );
 }

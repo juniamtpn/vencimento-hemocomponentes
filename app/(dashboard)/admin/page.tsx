@@ -60,6 +60,7 @@ export default async function AdminPage() {
     id: a.id,
     nome: a.nome,
     codigo: a.codigo,
+    liderancaNome: a.liderancaNome,
   }));
 
   const ativos = naoP.filter((u) => u.status === "aprovado").length;
