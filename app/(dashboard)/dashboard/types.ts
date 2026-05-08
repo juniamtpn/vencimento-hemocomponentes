@@ -31,6 +31,7 @@ export interface AgenciaStatus {
 export interface LiderancaInfo {
   nome: string;
   telefone: string | null;
+  email: string | null;
   agencias: {
     id: string;
     codigo: string;

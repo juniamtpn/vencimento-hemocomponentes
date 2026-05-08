@@ -82,6 +82,7 @@ export default async function DashboardPage() {
       liderancasMap.set(ag.liderancaNome, {
         nome: ag.liderancaNome,
         telefone: ag.liderancaTelefone ?? null,
+        email: ag.liderancaEmail ?? null,
         agencias: [],
         enviadas: 0,
         total: 0,
