@@ -4,7 +4,6 @@ export interface BolsaEnriquecida {
   agenciaCodigo: string;
   agenciaNome: string;
   liderancaNome: string;
-  liderancaTelefone: string | null;
   instituicao: string;
   doacao: string;
   componente: string;

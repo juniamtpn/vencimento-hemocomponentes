@@ -42,8 +42,6 @@ export async function POST(request: NextRequest) {
     codigo,
     nome,
     liderancaNome: "",
-    liderancaTelefone: null,
-    liderancaEmail: null,
   });
 
   return NextResponse.json({ agencia: { id, codigo, nome, liderancaNome: "" } }, { status: 201 });

@@ -12,41 +12,41 @@ const db = drizzle(client, { schema });
 
 const AGENCIAS = [
   // Alessandra
-  { nome: "HUSC", codigo: "HUSC", liderancaNome: "Alessandra", liderancaEmail: "alessandra@vitahemoterapia.com.br", liderancaTelefone: "31984841831" },
-  { nome: "HUB", codigo: "HUB", liderancaNome: "Alessandra", liderancaEmail: "alessandra@vitahemoterapia.com.br", liderancaTelefone: "31984841831" },
+  { nome: "HUSC", codigo: "HUSC", liderancaNome: "Alessandra" },
+  { nome: "HUB", codigo: "HUB", liderancaNome: "Alessandra" },
   // Amanda
-  { nome: "HIO", codigo: "HIO", liderancaNome: "Amanda", liderancaEmail: "amanda.rodrigues@vitahemoterapia.com.br", liderancaTelefone: "31988237731" },
-  { nome: "HBH", codigo: "HBH", liderancaNome: "Amanda", liderancaEmail: "amanda.rodrigues@vitahemoterapia.com.br", liderancaTelefone: "31988237731" },
+  { nome: "HIO", codigo: "HIO", liderancaNome: "Amanda" },
+  { nome: "HBH", codigo: "HBH", liderancaNome: "Amanda" },
   // Ana Carolina
-  { nome: "HL", codigo: "HL", liderancaNome: "Ana Carolina", liderancaEmail: "ana.gontijo@pulsa-mg.com.br", liderancaTelefone: "31991112277" },
-  { nome: "HMDBC", codigo: "HMDBC", liderancaNome: "Ana Carolina", liderancaEmail: "ana.gontijo@pulsa-mg.com.br", liderancaTelefone: "31991112277" },
+  { nome: "HL", codigo: "HL", liderancaNome: "Ana Carolina" },
+  { nome: "HMDBC", codigo: "HMDBC", liderancaNome: "Ana Carolina" },
   // Ana Paula
-  { nome: "HVS", codigo: "HVS", liderancaNome: "Ana Paula", liderancaEmail: "paula.gomes@pulsa-mg.com.br", liderancaTelefone: "31998364361" },
-  { nome: "HMON", codigo: "HMON", liderancaNome: "Ana Paula", liderancaEmail: "paula.gomes@pulsa-mg.com.br", liderancaTelefone: "31998364361" },
-  { nome: "HSR", codigo: "HSR", liderancaNome: "Ana Paula", liderancaEmail: "paula.gomes@pulsa-mg.com.br", liderancaTelefone: "31998364361" },
+  { nome: "HVS", codigo: "HVS", liderancaNome: "Ana Paula" },
+  { nome: "HMON", codigo: "HMON", liderancaNome: "Ana Paula" },
+  { nome: "HSR", codigo: "HSR", liderancaNome: "Ana Paula" },
   // Beatriz
-  { nome: "HSCU Ub", codigo: "HSCU_UB", liderancaNome: "Beatriz", liderancaEmail: "beatriz.santos@vitahemoterapia.com.br", liderancaTelefone: "34996917919" },
-  { nome: "HSG Ub", codigo: "HSG_UB", liderancaNome: "Beatriz", liderancaEmail: "beatriz.santos@vitahemoterapia.com.br", liderancaTelefone: "34996917919" },
+  { nome: "HSCU Ub", codigo: "HSCU_UB", liderancaNome: "Beatriz" },
+  { nome: "HSG Ub", codigo: "HSG_UB", liderancaNome: "Beatriz" },
   // João
-  { nome: "HMDC", codigo: "HMDC", liderancaNome: "João", liderancaEmail: "joao.henrique@vitahemoterapia.com.br", liderancaTelefone: "31988575413" },
-  { nome: "HMDSA", codigo: "HMDSA", liderancaNome: "João", liderancaEmail: "joao.henrique@vitahemoterapia.com.br", liderancaTelefone: "31988575413" },
-  { nome: "HMDNL", codigo: "HMDNL", liderancaNome: "João", liderancaEmail: "joao.henrique@vitahemoterapia.com.br", liderancaTelefone: "31988575413" },
+  { nome: "HMDC", codigo: "HMDC", liderancaNome: "João" },
+  { nome: "HMDSA", codigo: "HMDSA", liderancaNome: "João" },
+  { nome: "HMDNL", codigo: "HMDNL", liderancaNome: "João" },
   // Juana
-  { nome: "HDMU", codigo: "HDMU", liderancaNome: "Juana", liderancaEmail: "juana.sousa@pulsa-mg.com.br", liderancaTelefone: "31997595500" },
-  { nome: "HUC", codigo: "HUC", liderancaNome: "Juana", liderancaEmail: "juana.sousa@pulsa-mg.com.br", liderancaTelefone: "31997595500" },
+  { nome: "HDMU", codigo: "HDMU", liderancaNome: "Juana" },
+  { nome: "HUC", codigo: "HUC", liderancaNome: "Juana" },
   // Raquel Villas Boas
-  { nome: "HLC", codigo: "HLC", liderancaNome: "Raquel Villas Boas", liderancaEmail: "raquel.vilasboas@pulsa-mg.com.br", liderancaTelefone: "31986234137" },
-  { nome: "HVC", codigo: "HVC", liderancaNome: "Raquel Villas Boas", liderancaEmail: "raquel.vilasboas@pulsa-mg.com.br", liderancaTelefone: "31986234137" },
-  { nome: "HSE", codigo: "HSE", liderancaNome: "Raquel Villas Boas", liderancaEmail: "raquel.vilasboas@pulsa-mg.com.br", liderancaTelefone: "31986234137" },
-  { nome: "HS", codigo: "HS", liderancaNome: "Raquel Villas Boas", liderancaEmail: "raquel.vilasboas@pulsa-mg.com.br", liderancaTelefone: "31986234137" },
+  { nome: "HLC", codigo: "HLC", liderancaNome: "Raquel Villas Boas" },
+  { nome: "HVC", codigo: "HVC", liderancaNome: "Raquel Villas Boas" },
+  { nome: "HSE", codigo: "HSE", liderancaNome: "Raquel Villas Boas" },
+  { nome: "HS", codigo: "HS", liderancaNome: "Raquel Villas Boas" },
   // Raquel Miranda
-  { nome: "UMC Ub", codigo: "UMC_UB", liderancaNome: "Raquel Miranda", liderancaEmail: "raquel.miranda@pulsa-mg.com.br", liderancaTelefone: "31990786976" },
-  { nome: "Madrecor Ub", codigo: "MADRECOR_UB", liderancaNome: "Raquel Miranda", liderancaEmail: "raquel.miranda@pulsa-mg.com.br", liderancaTelefone: "31990786976" },
+  { nome: "UMC Ub", codigo: "UMC_UB", liderancaNome: "Raquel Miranda" },
+  { nome: "Madrecor Ub", codigo: "MADRECOR_UB", liderancaNome: "Raquel Miranda" },
   // Samara
-  { nome: "HFR", codigo: "HFR", liderancaNome: "Samara", liderancaEmail: "samara.santos@pulsa-mg.com.br", liderancaTelefone: "31989168728" },
-  { nome: "HSL", codigo: "HSL", liderancaNome: "Samara", liderancaEmail: "samara.santos@pulsa-mg.com.br", liderancaTelefone: "31989168728" },
+  { nome: "HFR", codigo: "HFR", liderancaNome: "Samara" },
+  { nome: "HSL", codigo: "HSL", liderancaNome: "Samara" },
   // Evelin
-  { nome: "HMT", codigo: "HMT", liderancaNome: "Evelin", liderancaEmail: "evelin.viana@pulsa-mg.com.br", liderancaTelefone: "31992543425" },
+  { nome: "HMT", codigo: "HMT", liderancaNome: "Evelin" },
 ];
 
 const LIDERANCAS = [
@@ -74,8 +74,6 @@ async function seed() {
         nome: ag.nome,
         codigo: ag.codigo,
         liderancaNome: ag.liderancaNome,
-        liderancaEmail: ag.liderancaEmail,
-        liderancaTelefone: ag.liderancaTelefone,
       })
       .onConflictDoNothing();
 

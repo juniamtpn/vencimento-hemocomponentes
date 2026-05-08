@@ -8,8 +8,6 @@ export interface Agencia {
   nome: string;
   codigo: string;
   liderancaNome: string;
-  liderancaTelefone: string | null;
-  liderancaEmail: string | null;
   createdAt: number;
 }
 

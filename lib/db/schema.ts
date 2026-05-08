@@ -6,8 +6,6 @@ export const agencias = sqliteTable("agencias", {
   nome: text("nome").notNull(),
   codigo: text("codigo").notNull().unique(),
   liderancaNome: text("lideranca_nome").notNull(),
-  liderancaTelefone: text("lideranca_telefone"),
-  liderancaEmail: text("lideranca_email"),
   createdAt: integer("created_at")
     .notNull()
     .default(sql`(unixepoch())`),

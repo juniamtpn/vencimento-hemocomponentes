@@ -47,22 +47,17 @@ export async function PATCH(
     return NextResponse.json({ error: `Já existe uma agência com a sigla "${codigo}".` }, { status: 409 });
   }
 
-  // Resolve liderança fields from the responsible user
   let liderancaNome = agencia.liderancaNome;
-  let liderancaTelefone = agencia.liderancaTelefone ?? null;
-  let liderancaEmail = agencia.liderancaEmail ?? null;
 
   if (responsavelId) {
     const responsavel = await db.query.usuarios.findFirst({ where: eq(usuarios.id, responsavelId) });
     if (responsavel) {
       liderancaNome = responsavel.nome;
-      liderancaTelefone = responsavel.telefone ?? null;
-      liderancaEmail = responsavel.email;
     }
   }
 
   await db.update(agencias)
-    .set({ codigo, nome, liderancaNome, liderancaTelefone, liderancaEmail })
+    .set({ codigo, nome, liderancaNome })
     .where(eq(agencias.id, params.id));
 
   // Sync junction table: remove old responsible for this agency, add new one
