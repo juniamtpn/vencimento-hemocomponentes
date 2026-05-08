@@ -40,3 +40,4 @@ drizzle/migrations/*.sql
 # editor
 .vscode/
 .idea/
+.claude/

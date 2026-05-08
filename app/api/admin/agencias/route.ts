@@ -37,12 +37,7 @@ export async function POST(request: NextRequest) {
   }
 
   const id = nanoid();
-  await db.insert(agencias).values({
-    id,
-    codigo,
-    nome,
-    liderancaNome: "",
-  });
+  await db.insert(agencias).values({ id, codigo, nome });
 
-  return NextResponse.json({ agencia: { id, codigo, nome, liderancaNome: "" } }, { status: 201 });
+  return NextResponse.json({ agencia: { id, codigo, nome } }, { status: 201 });
 }

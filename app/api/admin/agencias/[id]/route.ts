@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { agencias, registrosDiarios, usuarioAgencias, usuarios } from "@/lib/db/schema";
+import { agencias, registrosDiarios, usuarioAgencias } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
@@ -47,17 +47,8 @@ export async function PATCH(
     return NextResponse.json({ error: `Já existe uma agência com a sigla "${codigo}".` }, { status: 409 });
   }
 
-  let liderancaNome = agencia.liderancaNome;
-
-  if (responsavelId) {
-    const responsavel = await db.query.usuarios.findFirst({ where: eq(usuarios.id, responsavelId) });
-    if (responsavel) {
-      liderancaNome = responsavel.nome;
-    }
-  }
-
   await db.update(agencias)
-    .set({ codigo, nome, liderancaNome })
+    .set({ codigo, nome })
     .where(eq(agencias.id, params.id));
 
   // Sync junction table: remove old responsible for this agency, add new one
@@ -67,7 +58,7 @@ export async function PATCH(
   }
 
   return NextResponse.json({
-    agencia: { id: params.id, codigo, nome, liderancaNome, responsavelId },
+    agencia: { id: params.id, codigo, nome, responsavelId },
   });
 }
 

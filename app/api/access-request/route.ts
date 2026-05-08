@@ -2,10 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { usuarios, agencias } from "@/lib/db/schema";
+import { usuarios, agencias, usuarioAgencias } from "@/lib/db/schema";
 import { notificarSolicitacaoAcesso } from "@/lib/teams-webhook";
 import { nanoid } from "nanoid";
 import { eq } from "drizzle-orm";
+
+async function vincularAgencia(usuarioId: string, agenciaId: string | null) {
+  await db.delete(usuarioAgencias).where(eq(usuarioAgencias.usuarioId, usuarioId));
+  if (agenciaId) {
+    await db.insert(usuarioAgencias).values({ id: nanoid(), usuarioId, agenciaId });
+  }
+}
 import { z } from "zod";
 
 const schema = z.object({
@@ -56,25 +63,21 @@ export async function POST(request: NextRequest) {
     }
     await db
       .update(usuarios)
-      .set({
-        nome,
-        agenciaId: agenciaRecord?.id ?? null,
-        justificativa,
-        status: "pendente",
-      })
+      .set({ nome, justificativa, status: "pendente" })
       .where(eq(usuarios.id, existing.id));
     usuarioId = existing.id;
+    await vincularAgencia(usuarioId, agenciaRecord?.id ?? null);
   } else {
     usuarioId = nanoid();
     await db.insert(usuarios).values({
       id: usuarioId,
       email: session.user.email,
       nome,
-      agenciaId: agenciaRecord?.id ?? null,
       justificativa,
       status: "pendente",
       perfil: "viewer",
     });
+    await vincularAgencia(usuarioId, agenciaRecord?.id ?? null);
   }
 
   const appUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";

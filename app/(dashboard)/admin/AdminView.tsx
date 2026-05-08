@@ -27,7 +27,7 @@ interface AgenciaOption {
   id: string;
   nome: string;
   codigo: string;
-  liderancaNome: string;
+  liderancaNome: string | null;
   responsavelId: string | null;
 }
 
@@ -84,7 +84,7 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
   const agenciasFiltradas = useMemo(() => {
     const q = searchAgencias.toLowerCase();
     return q
-      ? agenciasList.filter((a) => a.codigo.toLowerCase().includes(q) || a.nome.toLowerCase().includes(q) || a.liderancaNome.toLowerCase().includes(q))
+      ? agenciasList.filter((a) => a.codigo.toLowerCase().includes(q) || a.nome.toLowerCase().includes(q) || (a.liderancaNome ?? "").toLowerCase().includes(q))
       : agenciasList;
   }, [agenciasList, searchAgencias]);
 

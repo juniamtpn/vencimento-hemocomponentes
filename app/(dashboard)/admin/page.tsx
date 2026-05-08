@@ -22,6 +22,7 @@ export default async function AdminPage() {
   ]);
 
   const agenciasMap = new Map(todasAgencias.map((a) => [a.id, a]));
+  const usuariosAdminMap = new Map([...pendentes, ...naoP].map((u) => [u.id, u]));
 
   // usuarioId → agenciaId[]
   const relacoesPorUsuario = new Map<string, string[]>();
@@ -36,17 +37,20 @@ export default async function AdminPage() {
     }
   }
 
-  const pendentesInfo = pendentes.map((u) => ({
-    id: u.id,
-    nome: u.nome,
-    email: u.email,
-    agenciaNome: u.agenciaId ? (agenciasMap.get(u.agenciaId)?.nome ?? "—") : "—",
-    justificativa: u.justificativa,
-    createdAt: u.createdAt,
-  }));
+  const pendentesInfo = pendentes.map((u) => {
+    const agIds = relacoesPorUsuario.get(u.id) ?? [];
+    return {
+      id: u.id,
+      nome: u.nome,
+      email: u.email,
+      agenciaNome: agIds.length > 0 ? (agenciasMap.get(agIds[0])?.nome ?? "—") : "—",
+      justificativa: u.justificativa,
+      createdAt: u.createdAt,
+    };
+  });
 
   const usuariosInfo = naoP.map((u) => {
-    const agenciaIds = relacoesPorUsuario.get(u.id) ?? (u.agenciaId ? [u.agenciaId] : []);
+    const agenciaIds = relacoesPorUsuario.get(u.id) ?? [];
     const agenciasLabel = agenciaIds.length === 0
       ? "—"
       : agenciaIds.map((id) => agenciasMap.get(id)?.codigo ?? id).join(", ");
@@ -62,13 +66,17 @@ export default async function AdminPage() {
     };
   });
 
-  const agenciasOptions = todasAgencias.map((a) => ({
-    id: a.id,
-    nome: a.nome,
-    codigo: a.codigo,
-    liderancaNome: a.liderancaNome,
-    responsavelId: responsavelPorAgencia.get(a.id) ?? null,
-  }));
+  const agenciasOptions = todasAgencias.map((a) => {
+    const responsavelId = responsavelPorAgencia.get(a.id) ?? null;
+    const responsavel = responsavelId ? usuariosAdminMap.get(responsavelId) : null;
+    return {
+      id: a.id,
+      nome: a.nome,
+      codigo: a.codigo,
+      liderancaNome: responsavel?.nome ?? null,
+      responsavelId,
+    };
+  });
 
   const ativos = naoP.filter((u) => u.status === "aprovado").length;
   const rejeitados = naoP.filter((u) => u.status === "rejeitado").length;

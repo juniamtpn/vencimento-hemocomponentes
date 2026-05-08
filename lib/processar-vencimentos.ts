@@ -42,10 +42,14 @@ export async function processarVencimentos(): Promise<{
     : [];
   const usuariosRespMap = new Map(todosUsuariosResp.map((u) => [u.id, u]));
   const emailPorAgencia = new Map<string, string>();
+  const nomePorAgencia = new Map<string, string>();
   for (const rel of relacoesFiltradas) {
     if (!emailPorAgencia.has(rel.agenciaId)) {
       const user = usuariosRespMap.get(rel.usuarioId);
-      if (user) emailPorAgencia.set(rel.agenciaId, user.email);
+      if (user) {
+        emailPorAgencia.set(rel.agenciaId, user.email);
+        nomePorAgencia.set(rel.agenciaId, user.nome);
+      }
     }
   }
 
@@ -61,7 +65,7 @@ export async function processarVencimentos(): Promise<{
           if (!semArquivoPorResponsavel.has(liderancaEmail)) {
             semArquivoPorResponsavel.set(liderancaEmail, {
               email: liderancaEmail,
-              nome: agencia.liderancaNome,
+              nome: nomePorAgencia.get(agencia.id) ?? agencia.nome,
               agencias: [],
             });
           }
@@ -99,7 +103,7 @@ export async function processarVencimentos(): Promise<{
           await notificarArquivoRejeitado({
             agencia: agencia.nome,
             email: emailDataInvalida,
-            nome: agencia.liderancaNome,
+            nome: nomePorAgencia.get(agencia.id) ?? agencia.nome,
             arquivoNome: arquivo.nome,
             motivo: "data_invalida",
             dataArquivo: parseResult.dataEmissao,
@@ -117,7 +121,7 @@ export async function processarVencimentos(): Promise<{
           await notificarArquivoRejeitado({
             agencia: agencia.nome,
             email: emailAgenciaIncorreta,
-            nome: agencia.liderancaNome,
+            nome: nomePorAgencia.get(agencia.id) ?? agencia.nome,
             arquivoNome: arquivo.nome,
             motivo: "agencia_incorreta",
             codigoArquivo: parseResult.codigoAgencia,

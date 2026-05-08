@@ -3,6 +3,7 @@ import AzureADProvider from "next-auth/providers/azure-ad";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { db, usuarios } from "@/lib/db";
 import { eq } from "drizzle-orm";
+import { usuarioAgencias } from "@/lib/db/schema";
 import { nanoid } from "nanoid";
 
 const demoProvider =
@@ -81,7 +82,10 @@ export const authOptions: NextAuthOptions = {
         if (usuario) {
           session.user.id = usuario.id;
           session.user.perfil = usuario.perfil;
-          session.user.agenciaId = usuario.agenciaId ?? undefined;
+          const relacao = await db.query.usuarioAgencias.findFirst({
+            where: eq(usuarioAgencias.usuarioId, usuario.id),
+          });
+          session.user.agenciaId = relacao?.agenciaId;
         }
       }
       return session;

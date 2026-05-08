@@ -5,7 +5,6 @@ export const agencias = sqliteTable("agencias", {
   id: text("id").primaryKey(),
   nome: text("nome").notNull(),
   codigo: text("codigo").notNull().unique(),
-  liderancaNome: text("lideranca_nome").notNull(),
   createdAt: integer("created_at")
     .notNull()
     .default(sql`(unixepoch())`),
@@ -15,7 +14,6 @@ export const usuarios = sqliteTable("usuarios", {
   id: text("id").primaryKey(),
   email: text("email").notNull().unique(),
   nome: text("nome").notNull(),
-  agenciaId: text("agencia_id").references(() => agencias.id),
   perfil: text("perfil", { enum: ["admin", "viewer", "lideranca"] })
     .notNull()
     .default("viewer"),
