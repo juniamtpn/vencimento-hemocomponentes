@@ -1,4 +1,7 @@
-import pdfParse from "pdf-parse";
+import * as pdfParseModule from "pdf-parse";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const pdfParse: (buffer: Buffer) => Promise<{ text: string }> =
+  (pdfParseModule as any).default ?? pdfParseModule;
 import { classificarUrgencia, normalizarFatorRh, type BolsaParsed } from "./sheets-parser";
 
 // Matches "DD/MM/YYYY HH:MM" — anchor used to split each data line
