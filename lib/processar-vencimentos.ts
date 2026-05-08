@@ -29,18 +29,15 @@ export async function processarVencimentos(): Promise<{
   const todasAgencias = await db.query.agencias.findMany();
   const semArquivo: string[] = [];
   const resultados: ResultadoAgencia[] = [];
-
-  // Group agencies-without-files by responsável for individual Teams notifications
   const semArquivoPorResponsavel: Map<string, { email: string; nome: string; agencias: string[] }> = new Map();
 
-  for (const agencia of todasAgencias) {
+  async function processarAgencia(agencia: typeof todasAgencias[0]) {
     try {
       const arquivo = await buscarArquivoAgencia(agencia.codigo, agora);
 
       if (!arquivo) {
         semArquivo.push(agencia.nome);
 
-        // Track for per-responsável notification
         if (agencia.liderancaEmail) {
           const key = agencia.liderancaEmail;
           if (!semArquivoPorResponsavel.has(key)) {
@@ -53,7 +50,6 @@ export async function processarVencimentos(): Promise<{
           semArquivoPorResponsavel.get(key)!.agencias.push(agencia.nome);
         }
 
-        // Keep existing record if there is one; don't overwrite with sem_arquivo if already processed
         const existente = await db.query.registrosDiarios.findFirst({
           where: and(
             eq(registrosDiarios.agenciaId, agencia.id),
@@ -70,14 +66,12 @@ export async function processarVencimentos(): Promise<{
           });
         }
         resultados.push({ agencia: agencia.nome, codigo: agencia.codigo, status: "sem_arquivo" });
-        continue;
+        return;
       }
 
-      // Download and parse
       const buffer = await baixarArquivo(arquivo.downloadUrl);
       const bolsasParsed = await parsearArquivo(buffer, arquivo.nome);
 
-      // Replace all previous data for this agency (not just today — replace the last record)
       const registrosExistentes = await db.query.registrosDiarios.findMany({
         where: eq(registrosDiarios.agenciaId, agencia.id),
       });
@@ -134,6 +128,12 @@ export async function processarVencimentos(): Promise<{
       console.error(`[Processamento] Erro em ${agencia.nome}:`, error);
       resultados.push({ agencia: agencia.nome, codigo: agencia.codigo, status: "erro" });
     }
+  }
+
+  // Processa em lotes de 3 para não sobrecarregar Graph API nem o banco
+  const LOTE = 3;
+  for (let i = 0; i < todasAgencias.length; i += LOTE) {
+    await Promise.all(todasAgencias.slice(i, i + LOTE).map(processarAgencia));
   }
 
   // Send notifications

@@ -76,7 +76,6 @@ async function seed() {
         liderancaNome: ag.liderancaNome,
         liderancaEmail: ag.liderancaEmail,
         liderancaTelefone: ag.liderancaTelefone,
-        onedriveFolderId: null,
       })
       .onConflictDoNothing();
 

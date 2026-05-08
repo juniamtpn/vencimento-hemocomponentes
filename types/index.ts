@@ -10,7 +10,6 @@ export interface Agencia {
   liderancaNome: string;
   liderancaTelefone: string | null;
   liderancaEmail: string | null;
-  onedriveFolderId: string | null;
   createdAt: number;
 }
 

@@ -95,12 +95,12 @@ export async function buscarArquivoAgencia(
       return nomeSemExt === prefixo;
     });
 
-    if (!arquivo) return null;
+    if (!arquivo || !arquivo["@microsoft.graph.downloadUrl"]) return null;
 
     return {
       id: arquivo.id,
       nome: arquivo.name,
-      downloadUrl: arquivo["@microsoft.graph.downloadUrl"] ?? "",
+      downloadUrl: arquivo["@microsoft.graph.downloadUrl"],
     };
   } catch (err) {
     console.error(`[OneDrive] Erro ao buscar arquivo para ${codigoAgencia}:`, err);

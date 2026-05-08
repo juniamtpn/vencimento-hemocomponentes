@@ -45,6 +45,15 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    const agora = Math.floor(Date.now() / 1000);
+    const COOLDOWN = 5 * 60;
+    if (agora - existing.updatedAt < COOLDOWN) {
+      const restante = Math.ceil((COOLDOWN - (agora - existing.updatedAt)) / 60);
+      return NextResponse.json(
+        { error: `Aguarde ${restante} minuto(s) antes de enviar uma nova solicitação.` },
+        { status: 429 }
+      );
+    }
     await db
       .update(usuarios)
       .set({

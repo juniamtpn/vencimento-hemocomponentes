@@ -41,14 +41,28 @@ export async function graphFetch(
   options: RequestInit = {}
 ): Promise<Response> {
   const token = await getGraphToken();
-  return fetch(`https://graph.microsoft.com/v1.0${path}`, {
+  const url = `https://graph.microsoft.com/v1.0${path}`;
+  const reqOptions: RequestInit = {
     ...options,
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
       ...options.headers,
     },
-  });
+  };
+
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= 2; attempt++) {
+    try {
+      const res = await fetch(url, reqOptions);
+      if (res.ok || res.status < 500) return res; // não retenta 4xx
+      lastError = new Error(`[Graph] HTTP ${res.status} em ${path}`);
+    } catch (err) {
+      lastError = err;
+    }
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+  }
+  throw lastError;
 }
 
 // Encode OneDrive sharing URL for Graph API
