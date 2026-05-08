@@ -53,9 +53,9 @@ function LoginForm() {
                   <path d="M12 2C12 2 5 10.5 5 15a7 7 0 0 0 14 0c0-4.5-7-13-7-13z" />
                 </svg>
               </div>
-              <h1 className="text-xl font-bold text-slate-900 tracking-tight">HEMOTE</h1>
+              <h1 className="text-xl font-bold text-slate-900 tracking-tight">PULSA</h1>
               <p className="text-slate-500 text-sm mt-1 text-center">
-                Controle de Vencimento de Hemocomponentes
+                Gestão de Hemocomponentes
               </p>
             </div>
 
@@ -122,7 +122,7 @@ function LoginForm() {
 
           <div className="px-8 pb-6 text-center">
             <p className="text-xs text-slate-400">
-              Acesso restrito a colaboradores do HEMOTE.{" "}
+              Acesso restrito a colaboradores da PULSA.{" "}
               <a href="/solicitar-acesso" className="text-[#C8102E] hover:text-[#a50d24] font-medium hover:underline transition-colors">
                 Solicitar acesso
               </a>
@@ -131,7 +131,7 @@ function LoginForm() {
         </div>
 
         <p className="text-center text-slate-600 text-xs mt-6">
-          Hemoterápica de Mato Grosso do Sul · HEMOTE
+          Pulsa · Gestão de Hemocomponentes
         </p>
       </div>
     </div>

@@ -69,7 +69,7 @@ export async function notificarSolicitacaoAcesso(dados: {
   appUrl: string;
 }): Promise<void> {
   await enviarWebhook({
-    title: "🩸 Nova Solicitação de Acesso — HEMOTE Vencimentos",
+    title: "🩸 Nova Solicitação de Acesso — PULSA Vencimentos",
     text: `**${dados.nome}** (${dados.email}) solicitou acesso ao sistema.\n\n**Agência:** ${dados.agencia}\n\n**Justificativa:** ${dados.justificativa}`,
     actions: [{ type: "OpenUri", name: "Aprovar ou Rejeitar", target: `${dados.appUrl}/admin/aprovacoes` }],
   });
@@ -81,7 +81,7 @@ export async function notificarAcessoAprovado(dados: {
   perfil: string;
 }): Promise<void> {
   await enviarWebhook({
-    title: "✅ Acesso Aprovado — HEMOTE Vencimentos",
+    title: "✅ Acesso Aprovado — PULSA Vencimentos",
     text: `O acesso de **${dados.nome}** (${dados.email}) foi **aprovado** com perfil **${dados.perfil}**.`,
   });
 }
@@ -91,7 +91,7 @@ export async function notificarAcessoRejeitado(dados: {
   email: string;
 }): Promise<void> {
   await enviarWebhook({
-    title: "❌ Acesso Rejeitado — HEMOTE Vencimentos",
+    title: "❌ Acesso Rejeitado — PULSA Vencimentos",
     text: `O acesso de **${dados.nome}** (${dados.email}) foi **rejeitado**.`,
   });
 }
@@ -111,11 +111,11 @@ export async function notificarResponsaveisArquivoFaltando(
       `<p>🚨 <b>${resp.nome}</b>,</p>` +
       `<p>O arquivo de estoque de hoje ainda não foi recebido para: <b>${listaAgencias}</b>.</p>` +
       `<p>Por favor, envie o arquivo o quanto antes para manter o controle de vencimentos atualizado.</p>` +
-      `<p style="color:#888;font-size:12px;">— HEMOTE Vencimentos</p>`;
+      `<p style="color:#888;font-size:12px;">— PULSA Vencimentos</p>`;
 
     await enviarEmail(
       resp.email,
-      "🚨 HEMOTE — Arquivo de estoque não recebido",
+      "🚨 PULSA — Arquivo de estoque não recebido",
       mensagem
     );
     console.log(`[Teams] Notificação enviada para ${resp.email} (${listaAgencias})`);
@@ -127,7 +127,7 @@ export async function notificarAgenciasSemArquivo(agencias: string[]): Promise<v
   if (agencias.length === 0) return;
   const lista = agencias.map((a) => `- ${a}`).join("\n");
   await enviarWebhook({
-    title: "⚠️ Agências sem arquivo hoje — HEMOTE Vencimentos",
+    title: "⚠️ Agências sem arquivo hoje — PULSA Vencimentos",
     text: `As seguintes agências **não enviaram planilha** no processamento de hoje:\n\n${lista}`,
   });
 }

@@ -6,8 +6,8 @@ import { Providers } from "./providers";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "HEMOTE Vencimentos",
-  description: "Sistema de controle de vencimento de hemocomponentes",
+  title: "PULSA Vencimentos",
+  description: "Sistema de gestão de hemocomponentes",
 };
 
 export default function RootLayout({

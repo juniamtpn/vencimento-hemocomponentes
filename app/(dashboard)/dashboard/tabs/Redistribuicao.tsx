@@ -55,7 +55,7 @@ export default function Redistribuicao({ bolsas, agencias }: Props) {
     if (!agenciaSel || bolsasSel.length === 0) return;
     const hoje = new Date().toLocaleDateString("pt-BR");
     const linhas: string[] = [
-      `*🩸 HEMOTE — Disponibilidade para Redistribuição*`,
+      `*🩸 PULSA — Disponibilidade para Redistribuição*`,
       `*Agência:* ${agenciaNome}`,
       `*Data:* ${hoje}`,
       ``,
@@ -81,7 +81,7 @@ export default function Redistribuicao({ bolsas, agencias }: Props) {
       linhas.push(``);
     }
 
-    linhas.push(`_Mensagem gerada pelo sistema HEMOTE Vencimentos._`);
+    linhas.push(`_Mensagem gerada pelo sistema PULSA Vencimentos._`);
     setMensagem(linhas.join("\n"));
   }
 

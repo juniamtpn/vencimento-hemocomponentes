@@ -42,10 +42,10 @@ export default async function DashboardLayout({
           </div>
           <div>
             <p className="text-white font-semibold text-sm leading-tight tracking-wide">
-              Gestão de Hemocomponentes
+              PULSA
             </p>
             <p className="text-slate-400 text-[10px] leading-tight font-medium uppercase tracking-widest hidden sm:block">
-              Pulsa
+              Gestão de Hemocomponentes
             </p>
           </div>
         </div>

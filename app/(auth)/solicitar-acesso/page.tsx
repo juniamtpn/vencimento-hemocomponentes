@@ -74,7 +74,7 @@ function SolicitarAcessoForm() {
         <div className="p-8">
           <div className="text-center mb-6">
             <h1 className="text-xl font-bold text-slate-800">Solicitar Acesso</h1>
-            <p className="text-slate-500 text-sm mt-1">HEMOTE Vencimentos — Sistema Interno</p>
+            <p className="text-slate-500 text-sm mt-1">PULSA Vencimentos — Sistema Interno</p>
           </div>
 
           {status === "pendente" && (

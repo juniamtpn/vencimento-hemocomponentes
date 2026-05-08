@@ -16,7 +16,7 @@ export function gerarMensagemWhatsApp(
   const hoje = new Date().toLocaleDateString("pt-BR");
 
   const linhas: string[] = [
-    `*🩸 HEMOTE — Disponibilidade para Redistribuição*`,
+    `*🩸 PULSA — Disponibilidade para Redistribuição*`,
     `*Agência:* ${agenciaOrigem}`,
     `*Data:* ${hoje}`,
     ``,
@@ -48,7 +48,7 @@ export function gerarMensagemWhatsApp(
     linhas.push(``);
   }
 
-  linhas.push(`_Mensagem gerada automaticamente pelo sistema HEMOTE._`);
+  linhas.push(`_Mensagem gerada automaticamente pelo sistema PULSA._`);
 
   return linhas.join("\n");
 }
