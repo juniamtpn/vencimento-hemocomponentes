@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { agencias, registrosDiarios, bolsas } from "@/lib/db/schema";
 import { buscarArquivoAgencia, baixarArquivo } from "@/lib/onedrive";
-import { parsearPlanilha } from "@/lib/sheets-parser";
+import { parsearArquivo } from "@/lib/file-parser";
 import {
   notificarAgenciasSemArquivo,
   notificarVencimentosCriticos,
@@ -75,7 +75,7 @@ export async function processarVencimentos(): Promise<{
 
       // Download and parse
       const buffer = await baixarArquivo(arquivo.downloadUrl);
-      const bolsasParsed = parsearPlanilha(buffer);
+      const bolsasParsed = await parsearArquivo(buffer, arquivo.nome);
 
       // Replace all previous data for this agency (not just today — replace the last record)
       const registrosExistentes = await db.query.registrosDiarios.findMany({

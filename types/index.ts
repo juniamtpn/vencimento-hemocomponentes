@@ -2,12 +2,6 @@ export type Perfil = "admin" | "viewer" | "lideranca";
 export type StatusUsuario = "pendente" | "aprovado" | "rejeitado";
 export type Urgencia = "vencido" | "hoje" | "amanha" | "3dias" | "ok";
 export type StatusRegistro = "processado" | "sem_arquivo" | "erro";
-export type TipoNotificacao =
-  | "acesso_solicitado"
-  | "acesso_aprovado"
-  | "acesso_rejeitado"
-  | "vencimento_critico"
-  | "sem_arquivo";
 
 export interface Agencia {
   id: string;
@@ -54,15 +48,6 @@ export interface Bolsa {
   abo: string;
   fatorRh: string;
   urgencia: Urgencia;
-  createdAt: number;
-}
-
-export interface Notificacao {
-  id: string;
-  tipo: TipoNotificacao;
-  destinatario: string;
-  conteudo: string;
-  enviado: number;
   createdAt: number;
 }
 

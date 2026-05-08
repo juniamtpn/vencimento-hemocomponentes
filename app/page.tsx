@@ -6,6 +6,9 @@ export default async function Home() {
   const session = await getServerSession(authOptions);
 
   if (!session) {
+    if (process.env.TEST_USER_EMAIL) {
+      redirect("/auto-login");
+    }
     redirect("/login");
   }
 

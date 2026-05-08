@@ -23,6 +23,9 @@ export interface AgenciaStatus {
   status: "processado" | "sem_arquivo" | "erro";
   totalBolsas: number;
   arquivoNome: string | null;
+  tipoEnvio: "automatico" | "manual" | null;
+  enviadoPor: string | null;
+  createdAt: number | null;
 }
 
 export interface LiderancaInfo {

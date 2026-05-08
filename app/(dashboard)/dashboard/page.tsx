@@ -69,6 +69,9 @@ export default async function DashboardPage() {
       status: (reg?.status ?? "sem_arquivo") as AgenciaStatus["status"],
       totalBolsas: reg?.totalBolsas ?? 0,
       arquivoNome: reg?.arquivoNome ?? null,
+      tipoEnvio: (reg?.tipoEnvio ?? null) as AgenciaStatus["tipoEnvio"],
+      enviadoPor: reg?.enviadoPor ?? null,
+      createdAt: reg?.createdAt ?? null,
     };
   });
 

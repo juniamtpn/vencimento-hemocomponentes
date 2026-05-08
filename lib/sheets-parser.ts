@@ -44,7 +44,7 @@ function excelDateToISO(value: unknown): string | null {
   return null;
 }
 
-function classificarUrgencia(validadeISO: string): Urgencia {
+export function classificarUrgencia(validadeISO: string): Urgencia {
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
   const validade = parseISO(validadeISO);
@@ -62,11 +62,25 @@ function classificarUrgencia(validadeISO: string): Urgencia {
 }
 
 // Fator Rh: normalize P/N/+/- to canonical form
-function normalizarFatorRh(valor: string): string {
+export function normalizarFatorRh(valor: string): string {
   const v = String(valor ?? "").trim().toUpperCase();
   if (v === "P" || v === "+" || v === "POS" || v.startsWith("PO")) return "P";
   if (v === "N" || v === "-" || v === "NEG" || v.startsWith("NE")) return "N";
   return v || "-";
+}
+
+function isDataValidade(iso: string | null): boolean {
+  if (!iso) return false;
+  return parseInt(iso.substring(0, 4), 10) >= 2000;
+}
+
+function calibrarColData(rows: unknown[][], headerRow: number, detectedCol: number): number {
+  for (let i = headerRow + 1; i < Math.min(headerRow + 4, rows.length); i++) {
+    const row = rows[i] as unknown[];
+    if (isDataValidade(excelDateToISO(row[detectedCol]))) return detectedCol;
+    if (detectedCol > 0 && isDataValidade(excelDateToISO(row[detectedCol - 1]))) return detectedCol - 1;
+  }
+  return detectedCol;
 }
 
 export function parsearPlanilha(buffer: Buffer): BolsaParsed[] {
@@ -105,9 +119,14 @@ export function parsearPlanilha(buffer: Buffer): BolsaParsed[] {
   const colInst = findCol("institui") !== -1 ? findCol("institui") : 0;
   const colDoa = findCol("doa") !== -1 ? findCol("doa") : 1;
   const colComp = findCol("comp") !== -1 ? findCol("comp") : 3;
-  const colVal = findCol("valid") !== -1 ? findCol("valid") : 5;
   const colABO = findCol("abo") !== -1 ? findCol("abo") : 11;
   const colRh = findCol("rh", "fator") !== -1 ? findCol("rh", "fator") : 12;
+
+  // XLS files with merged cells (e.g. the HMT report) store the "Validade" label
+  // in the right-most merged cell (col N) but the actual date value in col N-1.
+  // We calibrate by scanning the first few data rows.
+  const colValHeader = findCol("valid") !== -1 ? findCol("valid") : 5;
+  const colVal = calibrarColData(rows, headerRow, colValHeader);
 
   const bolsas: BolsaParsed[] = [];
 

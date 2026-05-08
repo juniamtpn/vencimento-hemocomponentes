@@ -48,6 +48,10 @@ export const registrosDiarios = sqliteTable("registros_diarios", {
   })
     .notNull()
     .default("processado"),
+  tipoEnvio: text("tipo_envio", { enum: ["automatico", "manual"] })
+    .notNull()
+    .default("automatico"),
+  enviadoPor: text("enviado_por"),
   createdAt: integer("created_at")
     .notNull()
     .default(sql`(unixepoch())`),
@@ -77,27 +81,7 @@ export const bolsas = sqliteTable("bolsas", {
     .default(sql`(unixepoch())`),
 });
 
-export const notificacoes = sqliteTable("notificacoes", {
-  id: text("id").primaryKey(),
-  tipo: text("tipo", {
-    enum: [
-      "acesso_solicitado",
-      "acesso_aprovado",
-      "acesso_rejeitado",
-      "vencimento_critico",
-      "sem_arquivo",
-    ],
-  }).notNull(),
-  destinatario: text("destinatario").notNull(),
-  conteudo: text("conteudo").notNull(),
-  enviado: integer("enviado").notNull().default(0),
-  createdAt: integer("created_at")
-    .notNull()
-    .default(sql`(unixepoch())`),
-});
-
 export type AgenciaInsert = typeof agencias.$inferInsert;
 export type UsuarioInsert = typeof usuarios.$inferInsert;
 export type RegistroDiarioInsert = typeof registrosDiarios.$inferInsert;
 export type BolsaInsert = typeof bolsas.$inferInsert;
-export type NotificacaoInsert = typeof notificacoes.$inferInsert;
