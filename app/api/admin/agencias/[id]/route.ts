@@ -2,13 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { agencias, registrosDiarios, usuarioAgencias } from "@/lib/db/schema";
+import { agencias, registrosDiarios, usuarioAgencias, usuarios } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
+import { nanoid } from "nanoid";
 import { z } from "zod";
 
 const editSchema = z.object({
   codigo: z.string().min(1).max(30),
   nome: z.string().max(120).optional(),
+  responsavelId: z.string().nullable().optional(),
 });
 
 async function guardAdmin() {
@@ -37,6 +39,7 @@ export async function PATCH(
 
   const codigo = parsed.data.codigo.toUpperCase();
   const nome = parsed.data.nome?.trim() || codigo;
+  const responsavelId = parsed.data.responsavelId ?? null;
 
   // Check unique codigo (excluding self)
   const conflito = await db.query.agencias.findFirst({ where: eq(agencias.codigo, codigo) });
@@ -44,9 +47,33 @@ export async function PATCH(
     return NextResponse.json({ error: `Já existe uma agência com a sigla "${codigo}".` }, { status: 409 });
   }
 
-  await db.update(agencias).set({ codigo, nome }).where(eq(agencias.id, params.id));
+  // Resolve liderança fields from the responsible user
+  let liderancaNome = agencia.liderancaNome;
+  let liderancaTelefone = agencia.liderancaTelefone ?? null;
+  let liderancaEmail = agencia.liderancaEmail ?? null;
 
-  return NextResponse.json({ agencia: { id: params.id, codigo, nome, liderancaNome: agencia.liderancaNome } });
+  if (responsavelId) {
+    const responsavel = await db.query.usuarios.findFirst({ where: eq(usuarios.id, responsavelId) });
+    if (responsavel) {
+      liderancaNome = responsavel.nome;
+      liderancaTelefone = responsavel.telefone ?? null;
+      liderancaEmail = responsavel.email;
+    }
+  }
+
+  await db.update(agencias)
+    .set({ codigo, nome, liderancaNome, liderancaTelefone, liderancaEmail })
+    .where(eq(agencias.id, params.id));
+
+  // Sync junction table: remove old responsible for this agency, add new one
+  await db.delete(usuarioAgencias).where(eq(usuarioAgencias.agenciaId, params.id));
+  if (responsavelId) {
+    await db.insert(usuarioAgencias).values({ id: nanoid(), usuarioId: responsavelId, agenciaId: params.id });
+  }
+
+  return NextResponse.json({
+    agencia: { id: params.id, codigo, nome, liderancaNome, responsavelId },
+  });
 }
 
 export async function DELETE(

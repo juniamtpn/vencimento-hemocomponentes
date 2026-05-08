@@ -24,6 +24,7 @@ export const usuarios = sqliteTable("usuarios", {
   status: text("status", { enum: ["pendente", "aprovado", "rejeitado"] })
     .notNull()
     .default("pendente"),
+  telefone: text("telefone"),
   justificativa: text("justificativa"),
   aprovadoPor: text("aprovado_por"),
   createdAt: integer("created_at")

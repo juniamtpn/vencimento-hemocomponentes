@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 
 interface PendenteInfo {
@@ -16,6 +16,7 @@ interface UsuarioInfo {
   id: string;
   nome: string;
   email: string;
+  telefone: string | null;
   agenciasLabel: string;
   agenciaIds: string[];
   perfil: "admin" | "viewer" | "lideranca";
@@ -27,6 +28,7 @@ interface AgenciaOption {
   nome: string;
   codigo: string;
   liderancaNome: string;
+  responsavelId: string | null;
 }
 
 interface Props {
@@ -35,11 +37,7 @@ interface Props {
   agencias: AgenciaOption[];
 }
 
-const PERFIL_LABEL: Record<string, string> = {
-  admin: "Admin",
-  lideranca: "Liderança",
-  viewer: "Viewer",
-};
+const PERFIL_LABEL: Record<string, string> = { admin: "Admin", lideranca: "Liderança", viewer: "Viewer" };
 
 type Tab = "pendentes" | "usuarios" | "agencias";
 
@@ -49,22 +47,46 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
   // ── tabs ──────────────────────────────────────────────────
   const [tab, setTab] = useState<Tab>(pendentes.length > 0 ? "pendentes" : "usuarios");
 
-  // ── users ─────────────────────────────────────────────────
+  // ── search ────────────────────────────────────────────────
+  const [searchUsuarios, setSearchUsuarios] = useState("");
+  const [searchAgencias, setSearchAgencias] = useState("");
+
+  // ── users state ───────────────────────────────────────────
   const [processing, setProcessing] = useState<string | null>(null);
   const [perfisAprov, setPerfisAprov] = useState<Record<string, string>>({});
   const [editandoId, setEditandoId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ nome: "", email: "", perfil: "viewer", agenciaIds: [] as string[] });
+  const [editForm, setEditForm] = useState({ nome: "", email: "", telefone: "", perfil: "viewer" });
   const [confirmExcluir, setConfirmExcluir] = useState<string | null>(null);
   const [erroModal, setErroModal] = useState<string | null>(null);
 
-  // ── agencies ──────────────────────────────────────────────
+  // ── agencies state ────────────────────────────────────────
   const [agenciasList, setAgenciasList] = useState<AgenciaOption[]>(agencias);
   const [processingAg, setProcessingAg] = useState(false);
   const [criandoAgencia, setCriandoAgencia] = useState(false);
   const [editandoAgenciaId, setEditandoAgenciaId] = useState<string | null>(null);
   const [confirmExcluirAgenciaId, setConfirmExcluirAgenciaId] = useState<string | null>(null);
-  const [agenciaForm, setAgenciaForm] = useState({ codigo: "", nome: "" });
+  const [agenciaForm, setAgenciaForm] = useState({ codigo: "", nome: "", responsavelId: "" });
   const [erroAgencia, setErroAgencia] = useState<string | null>(null);
+
+  // ── derived ───────────────────────────────────────────────
+  const liderancaUsers = useMemo(
+    () => usuarios.filter((u) => u.perfil === "lideranca" && u.status === "aprovado"),
+    [usuarios]
+  );
+
+  const usuariosFiltrados = useMemo(() => {
+    const q = searchUsuarios.toLowerCase();
+    return q
+      ? usuarios.filter((u) => u.nome.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
+      : usuarios;
+  }, [usuarios, searchUsuarios]);
+
+  const agenciasFiltradas = useMemo(() => {
+    const q = searchAgencias.toLowerCase();
+    return q
+      ? agenciasList.filter((a) => a.codigo.toLowerCase().includes(q) || a.nome.toLowerCase().includes(q) || a.liderancaNome.toLowerCase().includes(q))
+      : agenciasList;
+  }, [agenciasList, searchAgencias]);
 
   // ── user helpers ──────────────────────────────────────────
   async function aprovar(id: string) {
@@ -85,19 +107,17 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
     router.refresh();
   }
 
-  function abrirEdicaoUsuario(u: UsuarioInfo) {
-    setEditandoId(u.id);
-    setEditForm({ nome: u.nome, email: u.email, perfil: u.perfil, agenciaIds: u.agenciaIds });
-    setErroModal(null);
+  async function reativar(id: string) {
+    setProcessing(id);
+    await fetch(`/api/admin/reativar/${id}`, { method: "POST" });
+    setProcessing(null);
+    router.refresh();
   }
 
-  function toggleAgencia(agenciaId: string) {
-    setEditForm((prev) => ({
-      ...prev,
-      agenciaIds: prev.agenciaIds.includes(agenciaId)
-        ? prev.agenciaIds.filter((id) => id !== agenciaId)
-        : [...prev.agenciaIds, agenciaId],
-    }));
+  function abrirEdicaoUsuario(u: UsuarioInfo) {
+    setEditandoId(u.id);
+    setEditForm({ nome: u.nome, email: u.email, telefone: u.telefone ?? "", perfil: u.perfil });
+    setErroModal(null);
   }
 
   async function salvarEdicaoUsuario() {
@@ -107,7 +127,7 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
     const res = await fetch(`/api/admin/usuarios/${editandoId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(editForm),
+      body: JSON.stringify({ ...editForm, telefone: editForm.telefone || null }),
     });
     if (!res.ok) {
       const data = await res.json();
@@ -129,13 +149,17 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
 
   // ── agency helpers ────────────────────────────────────────
   function abrirCriarAgencia() {
-    setAgenciaForm({ codigo: "", nome: "" });
+    setAgenciaForm({ codigo: "", nome: "", responsavelId: "" });
     setErroAgencia(null);
     setCriandoAgencia(true);
   }
 
   function abrirEdicaoAgencia(ag: AgenciaOption) {
-    setAgenciaForm({ codigo: ag.codigo, nome: ag.nome === ag.codigo ? "" : ag.nome });
+    setAgenciaForm({
+      codigo: ag.codigo,
+      nome: ag.nome === ag.codigo ? "" : ag.nome,
+      responsavelId: ag.responsavelId ?? "",
+    });
     setErroAgencia(null);
     setEditandoAgenciaId(ag.id);
   }
@@ -151,6 +175,7 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
       body: JSON.stringify({
         codigo: agenciaForm.codigo.trim().toUpperCase(),
         nome: agenciaForm.nome.trim() || agenciaForm.codigo.trim().toUpperCase(),
+        responsavelId: agenciaForm.responsavelId || null,
       }),
     });
     if (!res.ok) {
@@ -160,11 +185,7 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
       const data = await res.json();
       if (isEdit) {
         setAgenciasList((prev) =>
-          prev.map((ag) =>
-            ag.id === editandoAgenciaId
-              ? { ...ag, codigo: data.agencia.codigo, nome: data.agencia.nome }
-              : ag
-          )
+          prev.map((ag) => ag.id === editandoAgenciaId ? { ...ag, ...data.agencia } : ag)
         );
         setEditandoAgenciaId(null);
       } else {
@@ -273,65 +294,104 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
 
       {/* ── USUÁRIOS ──────────────────────────────────────── */}
       {tab === "usuarios" && (
-        usuarios.length === 0 ? (
-          <EmptyState icon="user" title="Nenhum usuário cadastrado." />
-        ) : (
-          <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm min-w-[600px]">
-                <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50">
-                    <Th>Usuário</Th>
-                    <Th className="hidden md:table-cell">Agências</Th>
-                    <Th>Perfil</Th>
-                    <Th>Status</Th>
-                    <th className="px-4 py-3 w-20" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {usuarios.map((u) => (
-                    <tr key={u.id} className="hover:bg-slate-50/60 transition-colors">
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-slate-800">{u.nome}</p>
-                        <p className="text-xs text-slate-400">{u.email}</p>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-slate-500 hidden md:table-cell">{u.agenciasLabel}</td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border border-slate-200 text-slate-600">
-                          {PERFIL_LABEL[u.perfil] ?? u.perfil}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <StatusBadge status={u.status} />
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1 justify-end">
-                          <IconButton title="Editar" onClick={() => abrirEdicaoUsuario(u)}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125" />
-                          </IconButton>
-                          <IconButton title="Excluir" danger onClick={() => setConfirmExcluir(u.id)}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
-                          </IconButton>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+        <div className="space-y-3">
+          {/* Search */}
+          <div className="relative">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+            </svg>
+            <input
+              type="text"
+              value={searchUsuarios}
+              onChange={(e) => setSearchUsuarios(e.target.value)}
+              placeholder="Buscar por nome ou email…"
+              className="w-full pl-9 pr-4 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400"
+            />
           </div>
-        )
+
+          {usuariosFiltrados.length === 0 ? (
+            <EmptyState icon="user" title={searchUsuarios ? "Nenhum usuário encontrado." : "Nenhum usuário cadastrado."} />
+          ) : (
+            <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm min-w-[600px]">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50">
+                      <Th>Usuário</Th>
+                      <Th className="hidden md:table-cell">Agências</Th>
+                      <Th>Perfil</Th>
+                      <Th>Status</Th>
+                      <th className="px-4 py-3 w-24" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {usuariosFiltrados.map((u) => (
+                      <tr key={u.id} className="hover:bg-slate-50/60 transition-colors">
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-slate-800">{u.nome}</p>
+                          <p className="text-xs text-slate-400">{u.email}</p>
+                          {u.telefone && <p className="text-xs text-slate-400 mt-0.5">{u.telefone}</p>}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-500 hidden md:table-cell">{u.agenciasLabel}</td>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border border-slate-200 text-slate-600">
+                            {PERFIL_LABEL[u.perfil] ?? u.perfil}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <StatusBadge status={u.status} />
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1 justify-end">
+                            {u.status === "rejeitado" && (
+                              <button
+                                onClick={() => reativar(u.id)}
+                                disabled={processing === u.id}
+                                title="Reativar acesso"
+                                className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-md transition-colors disabled:opacity-50"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                                </svg>
+                              </button>
+                            )}
+                            <IconButton title="Editar" onClick={() => abrirEdicaoUsuario(u)}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125" />
+                            </IconButton>
+                            <IconButton title="Excluir" danger onClick={() => setConfirmExcluir(u.id)}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                            </IconButton>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* ── AGÊNCIAS ──────────────────────────────────────── */}
       {tab === "agencias" && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-slate-500">{agenciasList.length} agência{agenciasList.length !== 1 ? "s" : ""} cadastrada{agenciasList.length !== 1 ? "s" : ""}</p>
-            <button
-              onClick={abrirCriarAgencia}
-              className="flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors"
-            >
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            {/* Search */}
+            <div className="relative flex-1">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+              </svg>
+              <input
+                type="text"
+                value={searchAgencias}
+                onChange={(e) => setSearchAgencias(e.target.value)}
+                placeholder="Buscar por sigla, nome ou responsável…"
+                className="w-full pl-9 pr-4 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400"
+              />
+            </div>
+            <button onClick={abrirCriarAgencia}
+              className="flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors shrink-0">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
               </svg>
@@ -339,8 +399,8 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
             </button>
           </div>
 
-          {agenciasList.length === 0 ? (
-            <EmptyState icon="building" title="Nenhuma agência cadastrada." sub='Clique em "Nova agência" para começar.' />
+          {agenciasFiltradas.length === 0 ? (
+            <EmptyState icon="building" title={searchAgencias ? "Nenhuma agência encontrada." : "Nenhuma agência cadastrada."} sub={!searchAgencias ? 'Clique em "Nova agência" para começar.' : undefined} />
           ) : (
             <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
               <div className="overflow-x-auto">
@@ -349,12 +409,12 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
                     <tr className="border-b border-slate-200 bg-slate-50">
                       <Th>Sigla</Th>
                       <Th>Nome</Th>
-                      <Th className="hidden md:table-cell">Liderança</Th>
+                      <Th className="hidden md:table-cell">Responsável</Th>
                       <th className="px-4 py-3 w-20" />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {agenciasList.map((ag) => (
+                    {agenciasFiltradas.map((ag) => (
                       <tr key={ag.id} className="hover:bg-slate-50/60 transition-colors">
                         <td className="px-4 py-3">
                           <span className="font-mono font-semibold text-slate-800 text-[13px]">{ag.codigo}</span>
@@ -399,47 +459,21 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
                 onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
                 className={inputCls} />
             </Field>
+            <Field label="Telefone">
+              <input type="tel" value={editForm.telefone}
+                onChange={(e) => setEditForm({ ...editForm, telefone: e.target.value })}
+                placeholder="Ex: 31999990000"
+                className={inputCls} />
+            </Field>
             <Field label="Perfil">
               <select value={editForm.perfil}
-                onChange={(e) => setEditForm({ ...editForm, perfil: e.target.value, agenciaIds: [] })}
+                onChange={(e) => setEditForm({ ...editForm, perfil: e.target.value })}
                 className={inputCls}>
                 <option value="viewer">Viewer</option>
                 <option value="lideranca">Liderança</option>
                 <option value="admin">Admin</option>
               </select>
             </Field>
-            {editForm.perfil === "lideranca" ? (
-              <Field label="Agências" extra={editForm.agenciaIds.length > 0 ? `${editForm.agenciaIds.length} selecionada${editForm.agenciaIds.length !== 1 ? "s" : ""}` : undefined}>
-                <div className="rounded-lg border border-slate-200 bg-slate-50 divide-y divide-slate-100 max-h-52 overflow-y-auto">
-                  {agenciasList.map((a) => {
-                    const checked = editForm.agenciaIds.includes(a.id);
-                    return (
-                      <label key={a.id} className={`flex items-center gap-2.5 px-3 py-2.5 cursor-pointer transition-colors ${checked ? "bg-slate-100" : "hover:bg-slate-100"}`}>
-                        <input type="checkbox" checked={checked} onChange={() => toggleAgencia(a.id)}
-                          className="w-3.5 h-3.5 rounded border-slate-300 accent-slate-700" />
-                        <span className="text-sm text-slate-700">
-                          <span className="font-medium">{a.codigo}</span>
-                          {a.nome && a.nome !== a.codigo && <span className="text-slate-400"> — {a.nome}</span>}
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </Field>
-            ) : (
-              <Field label="Agência">
-                <select value={editForm.agenciaIds[0] ?? ""}
-                  onChange={(e) => setEditForm({ ...editForm, agenciaIds: e.target.value ? [e.target.value] : [] })}
-                  className={inputCls}>
-                  <option value="">Nenhuma</option>
-                  {agenciasList.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.nome && a.nome !== a.codigo ? `${a.codigo} — ${a.nome}` : a.codigo}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            )}
           </div>
           {erroModal && <ErrorBox msg={erroModal} />}
           <ModalFooter
@@ -459,24 +493,29 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
         >
           <div className="space-y-3">
             <Field label="Sigla *">
-              <input
-                type="text"
-                value={agenciaForm.codigo}
+              <input type="text" value={agenciaForm.codigo}
                 onChange={(e) => setAgenciaForm({ ...agenciaForm, codigo: e.target.value })}
                 placeholder="Ex: HMT"
                 className={inputCls}
-                autoFocus
-              />
+                autoFocus />
               <p className="text-[11px] text-slate-400 mt-1">Identificador usado no sistema. Será convertido para maiúsculas.</p>
             </Field>
             <Field label="Nome">
-              <input
-                type="text"
-                value={agenciaForm.nome}
+              <input type="text" value={agenciaForm.nome}
                 onChange={(e) => setAgenciaForm({ ...agenciaForm, nome: e.target.value })}
                 placeholder="Opcional — preencha depois se preferir"
-                className={inputCls}
-              />
+                className={inputCls} />
+            </Field>
+            <Field label="Responsável">
+              <select value={agenciaForm.responsavelId}
+                onChange={(e) => setAgenciaForm({ ...agenciaForm, responsavelId: e.target.value })}
+                className={inputCls}>
+                <option value="">Sem responsável</option>
+                {liderancaUsers.map((u) => (
+                  <option key={u.id} value={u.id}>{u.nome}</option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-400 mt-1">Exibe apenas usuários com perfil Liderança e status Ativo.</p>
             </Field>
           </div>
           {erroAgencia && <ErrorBox msg={erroAgencia} />}
@@ -516,7 +555,7 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
   );
 }
 
-// ── Small reusable primitives ─────────────────────────────────
+// ── Primitives ────────────────────────────────────────────────
 
 const inputCls = "w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400";
 
@@ -552,13 +591,10 @@ function IconButton({ children, title, danger, onClick }: { children: React.Reac
   );
 }
 
-function Field({ label, extra, children }: { label: string; extra?: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <div className="flex items-center justify-between">
-        <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">{label}</label>
-        {extra && <span className="text-[11px] text-slate-400">{extra}</span>}
-      </div>
+      <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">{label}</label>
       {children}
     </div>
   );
@@ -593,9 +629,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
-function ModalFooter({
-  onCancel, onConfirm, loading, confirmLabel = "Salvar alterações", confirmDisabled = false, cancelDisabled = false,
-}: {
+function ModalFooter({ onCancel, onConfirm, loading, confirmLabel = "Salvar alterações", confirmDisabled = false, cancelDisabled = false }: {
   onCancel: () => void; onConfirm: () => void; loading: boolean;
   confirmLabel?: string; confirmDisabled?: boolean; cancelDisabled?: boolean;
 }) {

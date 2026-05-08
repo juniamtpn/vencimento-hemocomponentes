@@ -23,12 +23,17 @@ export default async function AdminPage() {
 
   const agenciasMap = new Map(todasAgencias.map((a) => [a.id, a]));
 
-  // Build map usuarioId → agenciaId[]
+  // usuarioId → agenciaId[]
   const relacoesPorUsuario = new Map<string, string[]>();
+  // agenciaId → first usuarioId (primary responsible)
+  const responsavelPorAgencia = new Map<string, string>();
   for (const rel of todasRelacoes) {
     const lista = relacoesPorUsuario.get(rel.usuarioId) ?? [];
     lista.push(rel.agenciaId);
     relacoesPorUsuario.set(rel.usuarioId, lista);
+    if (!responsavelPorAgencia.has(rel.agenciaId)) {
+      responsavelPorAgencia.set(rel.agenciaId, rel.usuarioId);
+    }
   }
 
   const pendentesInfo = pendentes.map((u) => ({
@@ -49,6 +54,7 @@ export default async function AdminPage() {
       id: u.id,
       nome: u.nome,
       email: u.email,
+      telefone: u.telefone ?? null,
       agenciasLabel,
       agenciaIds,
       perfil: u.perfil as "admin" | "viewer" | "lideranca",
@@ -61,6 +67,7 @@ export default async function AdminPage() {
     nome: a.nome,
     codigo: a.codigo,
     liderancaNome: a.liderancaNome,
+    responsavelId: responsavelPorAgencia.get(a.id) ?? null,
   }));
 
   const ativos = naoP.filter((u) => u.status === "aprovado").length;
@@ -105,7 +112,6 @@ export default async function AdminPage() {
         </div>
       </div>
 
-      {/* Main content */}
       <AdminView
         pendentes={pendentesInfo}
         usuarios={usuariosInfo}
