@@ -2,7 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { usuarios, agencias } from "@/lib/db/schema";
+import { usuarios, agencias, usuarioAgencias } from "@/lib/db/schema";
 import { eq, ne } from "drizzle-orm";
 import Link from "next/link";
 import AdminView from "./AdminView";
@@ -14,13 +14,22 @@ export default async function AdminPage() {
   if (!session) redirect("/login");
   if (session.user.perfil !== "admin") redirect("/dashboard");
 
-  const [pendentes, naoP, todasAgencias] = await Promise.all([
+  const [pendentes, naoP, todasAgencias, todasRelacoes] = await Promise.all([
     db.query.usuarios.findMany({ where: eq(usuarios.status, "pendente") }),
     db.query.usuarios.findMany({ where: ne(usuarios.status, "pendente") }),
     db.query.agencias.findMany(),
+    db.query.usuarioAgencias.findMany(),
   ]);
 
   const agenciasMap = new Map(todasAgencias.map((a) => [a.id, a]));
+
+  // Build map usuarioId → agenciaId[]
+  const relacoesPorUsuario = new Map<string, string[]>();
+  for (const rel of todasRelacoes) {
+    const lista = relacoesPorUsuario.get(rel.usuarioId) ?? [];
+    lista.push(rel.agenciaId);
+    relacoesPorUsuario.set(rel.usuarioId, lista);
+  }
 
   const pendentesInfo = pendentes.map((u) => ({
     id: u.id,
@@ -31,15 +40,21 @@ export default async function AdminPage() {
     createdAt: u.createdAt,
   }));
 
-  const usuariosInfo = naoP.map((u) => ({
-    id: u.id,
-    nome: u.nome,
-    email: u.email,
-    agenciaNome: u.agenciaId ? (agenciasMap.get(u.agenciaId)?.nome ?? "—") : "—",
-    agenciaId: u.agenciaId,
-    perfil: u.perfil as "admin" | "viewer" | "lideranca",
-    status: u.status as "aprovado" | "rejeitado",
-  }));
+  const usuariosInfo = naoP.map((u) => {
+    const agenciaIds = relacoesPorUsuario.get(u.id) ?? (u.agenciaId ? [u.agenciaId] : []);
+    const agenciasLabel = agenciaIds.length === 0
+      ? "—"
+      : agenciaIds.map((id) => agenciasMap.get(id)?.codigo ?? id).join(", ");
+    return {
+      id: u.id,
+      nome: u.nome,
+      email: u.email,
+      agenciasLabel,
+      agenciaIds,
+      perfil: u.perfil as "admin" | "viewer" | "lideranca",
+      status: u.status as "aprovado" | "rejeitado",
+    };
+  });
 
   const agenciasOptions = todasAgencias.map((a) => ({
     id: a.id,

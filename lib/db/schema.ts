@@ -80,7 +80,18 @@ export const bolsas = sqliteTable("bolsas", {
     .default(sql`(unixepoch())`),
 });
 
+export const usuarioAgencias = sqliteTable("usuario_agencias", {
+  id: text("id").primaryKey(),
+  usuarioId: text("usuario_id")
+    .notNull()
+    .references(() => usuarios.id),
+  agenciaId: text("agencia_id")
+    .notNull()
+    .references(() => agencias.id),
+});
+
 export type AgenciaInsert = typeof agencias.$inferInsert;
 export type UsuarioInsert = typeof usuarios.$inferInsert;
 export type RegistroDiarioInsert = typeof registrosDiarios.$inferInsert;
 export type BolsaInsert = typeof bolsas.$inferInsert;
+export type UsuarioAgenciaInsert = typeof usuarioAgencias.$inferInsert;

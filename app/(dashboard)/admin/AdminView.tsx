@@ -16,8 +16,8 @@ interface UsuarioInfo {
   id: string;
   nome: string;
   email: string;
-  agenciaNome: string;
-  agenciaId: string | null;
+  agenciasLabel: string;
+  agenciaIds: string[];
   perfil: "admin" | "viewer" | "lideranca";
   status: "aprovado" | "rejeitado";
 }
@@ -52,7 +52,7 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
     nome: "",
     email: "",
     perfil: "viewer",
-    agenciaId: "",
+    agenciaIds: [] as string[],
   });
   const [confirmExcluir, setConfirmExcluir] = useState<string | null>(null);
   const [erroModal, setErroModal] = useState<string | null>(null);
@@ -81,9 +81,18 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
       nome: u.nome,
       email: u.email,
       perfil: u.perfil,
-      agenciaId: u.agenciaId ?? "",
+      agenciaIds: u.agenciaIds,
     });
     setErroModal(null);
+  }
+
+  function toggleAgencia(agenciaId: string) {
+    setEditForm((prev) => ({
+      ...prev,
+      agenciaIds: prev.agenciaIds.includes(agenciaId)
+        ? prev.agenciaIds.filter((id) => id !== agenciaId)
+        : [...prev.agenciaIds, agenciaId],
+    }));
   }
 
   async function salvarEdicao() {
@@ -93,10 +102,7 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
     const res = await fetch(`/api/admin/usuarios/${editandoId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...editForm,
-        agenciaId: editForm.agenciaId || null,
-      }),
+      body: JSON.stringify(editForm),
     });
     if (!res.ok) {
       const data = await res.json();
@@ -233,7 +239,7 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50">
                     <th className="text-left px-4 py-3 text-slate-500 text-[11px] font-semibold uppercase tracking-wide">Usuário</th>
-                    <th className="text-left px-4 py-3 text-slate-500 text-[11px] font-semibold uppercase tracking-wide hidden md:table-cell">Agência</th>
+                    <th className="text-left px-4 py-3 text-slate-500 text-[11px] font-semibold uppercase tracking-wide hidden md:table-cell">Agências</th>
                     <th className="text-left px-4 py-3 text-slate-500 text-[11px] font-semibold uppercase tracking-wide">Perfil</th>
                     <th className="text-left px-4 py-3 text-slate-500 text-[11px] font-semibold uppercase tracking-wide">Status</th>
                     <th className="px-4 py-3 w-20" />
@@ -247,7 +253,7 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
                         <p className="text-xs text-slate-400">{u.email}</p>
                       </td>
                       <td className="px-4 py-3 text-xs text-slate-500 hidden md:table-cell">
-                        {u.agenciaNome}
+                        {u.agenciasLabel}
                       </td>
                       <td className="px-4 py-3">
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border border-slate-200 text-slate-600">
@@ -327,24 +333,67 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
                   className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">Perfil</label>
+                <select
+                  value={editForm.perfil}
+                  onChange={(e) => setEditForm({ ...editForm, perfil: e.target.value, agenciaIds: [] })}
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                >
+                  <option value="viewer">Viewer</option>
+                  <option value="lideranca">Liderança</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+
+              {/* Agency selection — multi for liderança, single for viewer */}
+              {editForm.perfil === "lideranca" ? (
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">Perfil</label>
-                  <select
-                    value={editForm.perfil}
-                    onChange={(e) => setEditForm({ ...editForm, perfil: e.target.value })}
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
-                  >
-                    <option value="viewer">Viewer</option>
-                    <option value="lideranca">Liderança</option>
-                    <option value="admin">Admin</option>
-                  </select>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">Agências</label>
+                    {editForm.agenciaIds.length > 0 && (
+                      <span className="text-[11px] text-slate-400">{editForm.agenciaIds.length} selecionada{editForm.agenciaIds.length !== 1 ? "s" : ""}</span>
+                    )}
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 divide-y divide-slate-100 max-h-52 overflow-y-auto">
+                    {agencias.map((a) => {
+                      const checked = editForm.agenciaIds.includes(a.id);
+                      return (
+                        <label
+                          key={a.id}
+                          className={`flex items-center gap-2.5 px-3 py-2.5 cursor-pointer transition-colors ${
+                            checked ? "bg-slate-100" : "hover:bg-slate-100"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleAgencia(a.id)}
+                            className="w-3.5 h-3.5 rounded border-slate-300 text-slate-700 accent-slate-700"
+                          />
+                          <span className="text-sm text-slate-700">
+                            <span className="font-medium">{a.codigo}</span>
+                            {a.nome !== a.codigo && (
+                              <span className="text-slate-400"> — {a.nome}</span>
+                            )}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
                 </div>
+              ) : (
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-slate-600 uppercase tracking-wide">Agência</label>
                   <select
-                    value={editForm.agenciaId}
-                    onChange={(e) => setEditForm({ ...editForm, agenciaId: e.target.value })}
+                    value={editForm.agenciaIds[0] ?? ""}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        agenciaIds: e.target.value ? [e.target.value] : [],
+                      })
+                    }
                     className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
                   >
                     <option value="">Nenhuma</option>
@@ -355,7 +404,7 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
                     ))}
                   </select>
                 </div>
-              </div>
+              )}
             </div>
 
             {erroModal && (
