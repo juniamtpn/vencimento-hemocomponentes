@@ -31,44 +31,65 @@ export async function POST(request: NextRequest) {
   let bolsasParsed;
   try {
     bolsasParsed = await parsearArquivo(buffer, arquivo.name);
-  } catch {
-    return NextResponse.json({ error: "Não foi possível ler o arquivo. Verifique o formato (.xlsx, .xls ou .pdf)." }, { status: 422 });
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    const hint = detail.includes("Formato não suportado")
+      ? "Envie um arquivo .xlsx, .xls ou .pdf."
+      : "O arquivo pode estar corrompido ou em formato inesperado. Confira se o arquivo abre normalmente no Excel ou leitor de PDF.";
+    return NextResponse.json({ error: "Não foi possível ler o arquivo.", hint, debug: detail }, { status: 422 });
+  }
+
+  if (bolsasParsed.length === 0) {
+    return NextResponse.json({
+      error: "Nenhuma bolsa identificada no arquivo.",
+      hint: "O arquivo foi lido, mas nenhum dado válido foi encontrado. Verifique se a planilha contém o cabeçalho \"Instituição\" e datas de validade preenchidas, ou se o PDF segue o padrão de relatório esperado.",
+    }, { status: 422 });
   }
 
   // Replace any existing records for this agency
-  const existentes = await db.query.registrosDiarios.findMany({
-    where: eq(registrosDiarios.agenciaId, agenciaId),
-  });
-  for (const reg of existentes) {
-    await db.delete(bolsas).where(eq(bolsas.registroId, reg.id));
-    await db.delete(registrosDiarios).where(eq(registrosDiarios.id, reg.id));
-  }
-
-  const registroId = nanoid();
-  await db.insert(registrosDiarios).values({
-    id: registroId,
-    agenciaId,
-    dataProcessamento: hoje,
-    totalBolsas: bolsasParsed.length,
-    arquivoNome: arquivo.name,
-    status: "processado",
-    tipoEnvio: "manual",
-    enviadoPor: session.user.email ?? undefined,
-  });
-
-  for (const bolsa of bolsasParsed) {
-    await db.insert(bolsas).values({
-      id: nanoid(),
-      registroId,
-      agenciaId,
-      instituicao: bolsa.instituicao,
-      doacao: bolsa.doacao,
-      componente: bolsa.componente,
-      validade: bolsa.validade,
-      abo: bolsa.abo,
-      fatorRh: bolsa.fatorRh,
-      urgencia: bolsa.urgencia,
+  try {
+    const existentes = await db.query.registrosDiarios.findMany({
+      where: eq(registrosDiarios.agenciaId, agenciaId),
     });
+    for (const reg of existentes) {
+      await db.delete(bolsas).where(eq(bolsas.registroId, reg.id));
+      await db.delete(registrosDiarios).where(eq(registrosDiarios.id, reg.id));
+    }
+
+    const registroId = nanoid();
+    await db.insert(registrosDiarios).values({
+      id: registroId,
+      agenciaId,
+      dataProcessamento: hoje,
+      totalBolsas: bolsasParsed.length,
+      arquivoNome: arquivo.name,
+      status: "processado",
+      tipoEnvio: "manual",
+      enviadoPor: session.user.email ?? undefined,
+    });
+
+    for (const bolsa of bolsasParsed) {
+      await db.insert(bolsas).values({
+        id: nanoid(),
+        registroId,
+        agenciaId,
+        instituicao: bolsa.instituicao,
+        doacao: bolsa.doacao,
+        componente: bolsa.componente,
+        validade: bolsa.validade,
+        abo: bolsa.abo,
+        fatorRh: bolsa.fatorRh,
+        urgencia: bolsa.urgencia,
+      });
+    }
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    console.error("[upload-manual] Erro ao salvar no banco:", detail);
+    return NextResponse.json({
+      error: "Erro ao salvar os dados.",
+      hint: "Tente novamente. Se o problema persistir, informe o suporte com o nome do arquivo e a agência selecionada.",
+      debug: detail,
+    }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true, totalBolsas: bolsasParsed.length });

@@ -29,7 +29,7 @@ export default function UploadAgencia({ agencias, dataHoje }: Props) {
   const [agenciaSelecionada, setAgenciaSelecionada] = useState("");
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [enviando, setEnviando] = useState(false);
-  const [erro, setErro] = useState("");
+  const [erro, setErro] = useState<{ message: string; hint?: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const enviadas    = agencias.filter((a) => a.status === "processado").length;
@@ -41,7 +41,7 @@ export default function UploadAgencia({ agencias, dataHoje }: Props) {
   function abrirModal() {
     setAgenciaSelecionada("");
     setArquivo(null);
-    setErro("");
+    setErro(null);
     setModalAberto(true);
   }
 
@@ -52,11 +52,11 @@ export default function UploadAgencia({ agencias, dataHoje }: Props) {
 
   async function handleUpload() {
     if (!agenciaSelecionada || !arquivo) {
-      setErro("Selecione a agência e o arquivo.");
+      setErro({ message: "Selecione a agência e o arquivo antes de enviar." });
       return;
     }
     setEnviando(true);
-    setErro("");
+    setErro(null);
     try {
       const form = new FormData();
       form.append("arquivo", arquivo);
@@ -64,13 +64,13 @@ export default function UploadAgencia({ agencias, dataHoje }: Props) {
       const res = await fetch("/api/envios/upload-manual", { method: "POST", body: form });
       const data = await res.json();
       if (!res.ok) {
-        setErro(data.error ?? "Erro ao enviar.");
+        setErro({ message: data.error ?? "Erro ao enviar.", hint: data.hint });
       } else {
         setModalAberto(false);
         router.refresh();
       }
     } catch {
-      setErro("Erro de conexão.");
+      setErro({ message: "Erro de conexão.", hint: "Verifique sua internet e tente novamente." });
     } finally {
       setEnviando(false);
     }
@@ -236,7 +236,7 @@ export default function UploadAgencia({ agencias, dataHoje }: Props) {
                 <option value="">Selecione uma agência...</option>
                 {agencias.map((ag) => (
                   <option key={ag.id} value={ag.id}>
-                    {ag.codigo} — {ag.nome}
+                    {ag.nome !== ag.codigo ? `${ag.codigo} — ${ag.nome}` : ag.nome}
                   </option>
                 ))}
               </select>
@@ -268,7 +268,17 @@ export default function UploadAgencia({ agencias, dataHoje }: Props) {
             </div>
 
             {erro && (
-              <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</p>
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-3 space-y-1">
+                <div className="flex items-start gap-2">
+                  <svg className="w-4 h-4 text-red-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                  </svg>
+                  <p className="text-sm font-medium text-red-700 leading-snug">{erro.message}</p>
+                </div>
+                {erro.hint && (
+                  <p className="text-xs text-red-500 pl-6 leading-snug">{erro.hint}</p>
+                )}
+              </div>
             )}
 
             <div className="flex gap-2 justify-end">
