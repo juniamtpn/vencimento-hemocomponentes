@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import type { BolsaEnriquecida, AgenciaStatus, LiderancaInfo } from "./types";
 import UploadAgencia from "./tabs/UploadAgencia";
 import PainelVencimentos from "./tabs/PainelVencimentos";
@@ -72,7 +73,31 @@ export default function DashboardView({
   liderancas,
   dataHoje,
 }: Props) {
+  const router = useRouter();
   const [abaAtiva, setAbaAtiva] = useState<Tab>("painel");
+  const [atualizando, setAtualizando] = useState(false);
+  const [msgAtualizar, setMsgAtualizar] = useState("");
+
+  const handleAtualizar = useCallback(async () => {
+    setAtualizando(true);
+    setMsgAtualizar("");
+    try {
+      const res = await fetch("/api/processar", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setMsgAtualizar(data.error ?? "Erro ao atualizar.");
+      } else {
+        const processadas = (data.resultados as { status: string }[]).filter((r) => r.status === "processado").length;
+        setMsgAtualizar(`✓ ${processadas} agência(s) atualizadas.`);
+        router.refresh();
+      }
+    } catch {
+      setMsgAtualizar("Erro de conexão.");
+    } finally {
+      setAtualizando(false);
+      setTimeout(() => setMsgAtualizar(""), 5000);
+    }
+  }, [router]);
 
   const vencidas = bolsas.filter((b) => b.urgencia === "vencido").length;
   const hoje = bolsas.filter((b) => b.urgencia === "hoje").length;
@@ -83,7 +108,8 @@ export default function DashboardView({
     <div className="flex flex-col min-h-[calc(100vh-56px)]">
       {/* Tab bar */}
       <div className="bg-white border-b border-slate-200 px-4 sm:px-6">
-        <nav className="flex gap-0.5 overflow-x-auto py-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <nav className="flex gap-0.5 overflow-x-auto py-1.5">
           {TABS.map((tab) => {
             const isActive = abaAtiva === tab.id;
             return (
@@ -108,7 +134,25 @@ export default function DashboardView({
               </button>
             );
           })}
-        </nav>
+          </nav>
+
+          {/* Atualizar button */}
+          <div className="flex items-center gap-2 py-1.5 shrink-0">
+            {msgAtualizar && (
+              <span className="text-xs text-slate-500">{msgAtualizar}</span>
+            )}
+            <button
+              onClick={handleAtualizar}
+              disabled={atualizando}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 rounded-lg transition-all duration-150 whitespace-nowrap"
+            >
+              <svg className={`w-3.5 h-3.5 ${atualizando ? "animate-spin" : ""}`} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+              </svg>
+              {atualizando ? "Atualizando..." : "Atualizar"}
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Content */}

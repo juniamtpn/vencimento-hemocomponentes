@@ -7,6 +7,7 @@ export const agencias = sqliteTable("agencias", {
   codigo: text("codigo").notNull().unique(),
   liderancaNome: text("lideranca_nome").notNull(),
   liderancaTelefone: text("lideranca_telefone"),
+  liderancaEmail: text("lideranca_email"),
   onedriveFolderId: text("onedrive_folder_id"),
   createdAt: integer("created_at")
     .notNull()
