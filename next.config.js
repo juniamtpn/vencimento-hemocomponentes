@@ -3,7 +3,7 @@ const { withSentryConfig } = require("@sentry/nextjs");
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    serverComponentsExternalPackages: ["@libsql/client", "pdf-parse", "pdfjs-dist"],
+    serverComponentsExternalPackages: ["@libsql/client", "pdf-parse"],
     instrumentationHook: true,
   },
   images: {
