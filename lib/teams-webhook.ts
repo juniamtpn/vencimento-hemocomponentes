@@ -132,6 +132,47 @@ export async function notificarAgenciasSemArquivo(agencias: string[]): Promise<v
   });
 }
 
+function fmtDataBR(iso: string) {
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
+
+export async function notificarArquivoRejeitado(dados: {
+  agencia: string;
+  email: string;
+  nome: string;
+  arquivoNome: string;
+  motivo: "data_invalida" | "agencia_incorreta";
+  dataArquivo?: string;
+  codigoArquivo?: string;
+  codigoEsperado?: string;
+}): Promise<void> {
+  if (!dados.email) return;
+
+  let corpo: string;
+  if (dados.motivo === "data_invalida") {
+    corpo =
+      `<p>🚨 <b>${dados.nome}</b>,</p>` +
+      `<p>O arquivo <b>${dados.arquivoNome}</b> da agência <b>${dados.agencia}</b> foi recebido, mas <b>não pôde ser processado</b>.</p>` +
+      `<p><b>Motivo:</b> A data de emissão do relatório é <b>${fmtDataBR(dados.dataArquivo!)}</b>, mas hoje é <b>${new Date().toLocaleDateString("pt-BR")}</b>. Somente relatórios do dia atual são aceitos.</p>` +
+      `<p>Por favor, exporte um relatório atualizado e reenvie para a pasta do OneDrive.</p>` +
+      `<p style="color:#888;font-size:12px;">— PULSA Vencimentos</p>`;
+  } else {
+    corpo =
+      `<p>🚨 <b>${dados.nome}</b>,</p>` +
+      `<p>O arquivo <b>${dados.arquivoNome}</b> foi recebido na pasta da agência <b>${dados.codigoEsperado}</b>, mas o relatório identifica a agência <b>${dados.codigoArquivo}</b>.</p>` +
+      `<p>Por favor, verifique se o arquivo correto foi enviado para a pasta de <b>${dados.agencia}</b> no OneDrive.</p>` +
+      `<p style="color:#888;font-size:12px;">— PULSA Vencimentos</p>`;
+  }
+
+  await enviarEmail(
+    dados.email,
+    `🚨 PULSA — Arquivo não processado: ${dados.agencia}`,
+    corpo
+  );
+  console.log(`[Teams] Notificação de arquivo rejeitado enviada para ${dados.email} (${dados.agencia})`);
+}
+
 export async function notificarVencimentosCriticos(dados: {
   agencia: string;
   vencidos: number;

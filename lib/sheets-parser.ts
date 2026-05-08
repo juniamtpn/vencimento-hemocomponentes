@@ -12,6 +12,12 @@ export interface BolsaParsed {
   urgencia: Urgencia;
 }
 
+export interface ParseResult {
+  bolsas: BolsaParsed[];
+  dataEmissao: string | null;   // ISO YYYY-MM-DD
+  codigoAgencia: string | null; // e.g. "HMT"
+}
+
 function excelDateToISO(value: unknown): string | null {
   if (typeof value === "number") {
     const date = XLSX.SSF.parse_date_code(value);
@@ -83,7 +89,7 @@ function calibrarColData(rows: unknown[][], headerRow: number, detectedCol: numb
   return detectedCol;
 }
 
-export function parsearPlanilha(buffer: Buffer): BolsaParsed[] {
+export function parsearPlanilha(buffer: Buffer): ParseResult {
   const workbook = XLSX.read(buffer, { type: "buffer", cellDates: false });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const rows: unknown[][] = XLSX.utils.sheet_to_json(sheet, {
@@ -101,7 +107,27 @@ export function parsearPlanilha(buffer: Buffer): BolsaParsed[] {
     }
   }
 
-  if (headerRow === -1) return [];
+  if (headerRow === -1) return { bolsas: [], dataEmissao: null, codigoAgencia: null };
+
+  // Scan pre-header rows for emission date ("Emissão: DD/MM/YYYY")
+  let dataEmissao: string | null = null;
+  for (let i = 0; i < headerRow && !dataEmissao; i++) {
+    const rowArr = rows[i] as unknown[];
+    const rowStr = rowArr.map((c) => String(c ?? "")).join(" ");
+    const m = rowStr.match(/emiss[aã]o[:\s]+(\d{1,2})\/(\d{1,2})\/(\d{4})/i);
+    if (m) {
+      const [, d, mo, y] = m;
+      dataEmissao = `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
+      break;
+    }
+    // Handle Excel numeric date stored next to "Emissão" label in adjacent cell
+    for (let j = 0; j < rowArr.length - 1 && !dataEmissao; j++) {
+      if (String(rowArr[j] ?? "").toLowerCase().includes("emiss")) {
+        const iso = excelDateToISO(rowArr[j + 1]);
+        if (iso) dataEmissao = iso;
+      }
+    }
+  }
 
   // Detect column indices from header
   const header = (rows[headerRow] as string[]).map((h) =>
@@ -121,6 +147,7 @@ export function parsearPlanilha(buffer: Buffer): BolsaParsed[] {
   const colComp = findCol("comp") !== -1 ? findCol("comp") : 3;
   const colABO = findCol("abo") !== -1 ? findCol("abo") : 11;
   const colRh = findCol("rh", "fator") !== -1 ? findCol("rh", "fator") : 12;
+  const colLocArm = findCol("loc");
 
   // XLS files with merged cells (e.g. the HMT report) store the "Validade" label
   // in the right-most merged cell (col N) but the actual date value in col N-1.
@@ -129,6 +156,7 @@ export function parsearPlanilha(buffer: Buffer): BolsaParsed[] {
   const colVal = calibrarColData(rows, headerRow, colValHeader);
 
   const bolsas: BolsaParsed[] = [];
+  const codigoContagem = new Map<string, number>();
 
   for (let i = headerRow + 1; i < rows.length; i++) {
     const row = rows[i] as unknown[];
@@ -140,6 +168,16 @@ export function parsearPlanilha(buffer: Buffer): BolsaParsed[] {
     const validadeRaw = row[colVal];
     const abo = String(row[colABO] ?? "").trim();
     const fatorRhRaw = String(row[colRh] ?? "").trim();
+
+    // Extract agency code from "AT - CODE" in Loc.Arm. column
+    if (colLocArm >= 0) {
+      const locArmVal = String(row[colLocArm] ?? "").trim().toUpperCase();
+      const locMatch = locArmVal.match(/AT\s*[-–]\s*([A-Z0-9]+)/);
+      if (locMatch) {
+        const code = locMatch[1];
+        codigoContagem.set(code, (codigoContagem.get(code) ?? 0) + 1);
+      }
+    }
 
     const validade = excelDateToISO(validadeRaw);
     if (!validade) continue;
@@ -155,5 +193,11 @@ export function parsearPlanilha(buffer: Buffer): BolsaParsed[] {
     });
   }
 
-  return bolsas;
+  let codigoAgencia: string | null = null;
+  let maxCount = 0;
+  codigoContagem.forEach((count, code) => {
+    if (count > maxCount) { maxCount = count; codigoAgencia = code; }
+  });
+
+  return { bolsas, dataEmissao, codigoAgencia };
 }

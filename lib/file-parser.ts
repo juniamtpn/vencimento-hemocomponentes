@@ -1,13 +1,13 @@
 import * as Sentry from "@sentry/nextjs";
-import { parsearPlanilha, type BolsaParsed } from "./sheets-parser";
+import { parsearPlanilha, type BolsaParsed, type ParseResult } from "./sheets-parser";
 import { parsearPDF } from "./pdf-parser";
 
-export type { BolsaParsed };
+export type { BolsaParsed, ParseResult };
 
 export async function parsearArquivo(
   buffer: Buffer,
   nomeArquivo: string
-): Promise<BolsaParsed[]> {
+): Promise<ParseResult> {
   const ext = nomeArquivo.split(".").pop()?.toLowerCase() ?? "";
 
   Sentry.addBreadcrumb({
@@ -18,17 +18,17 @@ export async function parsearArquivo(
   });
 
   try {
-    let bolsas: BolsaParsed[];
+    let result: ParseResult;
 
     if (ext === "pdf") {
-      bolsas = await parsearPDF(buffer);
+      result = await parsearPDF(buffer);
     } else if (ext === "xlsx" || ext === "xls") {
-      bolsas = parsearPlanilha(buffer);
+      result = parsearPlanilha(buffer);
     } else {
       throw new Error(`Formato não suportado: .${ext || "desconhecido"}`);
     }
 
-    if (bolsas.length === 0) {
+    if (result.bolsas.length === 0) {
       Sentry.addBreadcrumb({
         category: "file-parser",
         message: `Nenhuma bolsa extraída de ${nomeArquivo}`,
@@ -44,11 +44,11 @@ export async function parsearArquivo(
 
     Sentry.addBreadcrumb({
       category: "file-parser",
-      message: `Parse concluído: ${bolsas.length} bolsa(s) extraída(s)`,
+      message: `Parse concluído: ${result.bolsas.length} bolsa(s) extraída(s)`,
       level: "info",
     });
 
-    return bolsas;
+    return result;
   } catch (error) {
     Sentry.captureException(error, {
       tags: { "arquivo.nome": nomeArquivo, "arquivo.ext": ext },

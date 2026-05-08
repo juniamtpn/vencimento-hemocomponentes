@@ -6,6 +6,7 @@ import {
   notificarAgenciasSemArquivo,
   notificarVencimentosCriticos,
   notificarResponsaveisArquivoFaltando,
+  notificarArquivoRejeitado,
 } from "@/lib/teams-webhook";
 import { nanoid } from "nanoid";
 import { eq, and } from "drizzle-orm";
@@ -70,7 +71,43 @@ export async function processarVencimentos(): Promise<{
       }
 
       const buffer = await baixarArquivo(arquivo.downloadUrl);
-      const bolsasParsed = await parsearArquivo(buffer, arquivo.nome);
+      const parseResult = await parsearArquivo(buffer, arquivo.nome);
+      const bolsasParsed = parseResult.bolsas;
+
+      // Skip stale files — only process today's reports
+      if (parseResult.dataEmissao && parseResult.dataEmissao !== hoje) {
+        console.warn(`[Processamento] ${agencia.nome}: emissão ${parseResult.dataEmissao} ≠ hoje ${hoje} — arquivo desatualizado, ignorando.`);
+        if (agencia.liderancaEmail) {
+          await notificarArquivoRejeitado({
+            agencia: agencia.nome,
+            email: agencia.liderancaEmail,
+            nome: agencia.liderancaNome,
+            arquivoNome: arquivo.nome,
+            motivo: "data_invalida",
+            dataArquivo: parseResult.dataEmissao,
+          });
+        }
+        resultados.push({ agencia: agencia.nome, codigo: agencia.codigo, status: "arquivo_desatualizado" });
+        return;
+      }
+
+      // Skip files whose agency code doesn't match the expected agency
+      if (parseResult.codigoAgencia && parseResult.codigoAgencia.toUpperCase() !== agencia.codigo.toUpperCase()) {
+        console.warn(`[Processamento] ${agencia.nome}: código no arquivo "${parseResult.codigoAgencia}" ≠ agência esperada "${agencia.codigo}" — ignorando.`);
+        if (agencia.liderancaEmail) {
+          await notificarArquivoRejeitado({
+            agencia: agencia.nome,
+            email: agencia.liderancaEmail,
+            nome: agencia.liderancaNome,
+            arquivoNome: arquivo.nome,
+            motivo: "agencia_incorreta",
+            codigoArquivo: parseResult.codigoAgencia,
+            codigoEsperado: agencia.codigo,
+          });
+        }
+        resultados.push({ agencia: agencia.nome, codigo: agencia.codigo, status: "agencia_incorreta" });
+        return;
+      }
 
       const registrosExistentes = await db.query.registrosDiarios.findMany({
         where: eq(registrosDiarios.agenciaId, agencia.id),

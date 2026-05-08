@@ -90,7 +90,7 @@ describe("parsearArquivo — Excel (.xlsx)", () => {
       ["B3087", "26014090", "CP", 1, "09/05/2026", "AT-HMT", "O", "P"],
       ["VITA",  "26010119", "CH", 1, "11/05/2026", "AT-HMT", "B", "P"],
     ];
-    const bolsas = await parsearArquivo(bufferXLS(rows), "teste.xlsx");
+    const { bolsas } = await parsearArquivo(bufferXLS(rows), "teste.xlsx");
 
     expect(bolsas).toHaveLength(3);
     expect(bolsas[0]).toMatchObject({
@@ -109,7 +109,7 @@ describe("parsearArquivo — Excel (.xlsx)", () => {
       ["B3087", "100", "CH", 1, "15/06/2026", "A", "+"],
       ["B3087", "101", "CP", 1, "15/06/2026", "O", "-"],
     ];
-    const bolsas = await parsearArquivo(bufferXLS(rows), "teste.xlsx");
+    const { bolsas } = await parsearArquivo(bufferXLS(rows), "teste.xlsx");
     expect(bolsas[0].fatorRh).toBe("P");
     expect(bolsas[1].fatorRh).toBe("N");
   });
@@ -133,7 +133,7 @@ describe("parsearArquivo — Excel (.xlsx)", () => {
       ["X", "3", "CH", 1, fmt(amanha), "O", "P"],
       ["X", "4", "CP", 1, fmt(em4Dias),"A", "P"],
     ];
-    const bolsas = await parsearArquivo(bufferXLS(rows), "urgencia.xlsx");
+    const { bolsas } = await parsearArquivo(bufferXLS(rows), "urgencia.xlsx");
 
     expect(bolsas[0].urgencia).toBe("vencido");
     expect(bolsas[1].urgencia).toBe("hoje");
@@ -143,7 +143,7 @@ describe("parsearArquivo — Excel (.xlsx)", () => {
 
   test("arquivo sem cabeçalho retorna array vazio", async () => {
     const rows = [["sem", "cabecalho", "valido"]];
-    const bolsas = await parsearArquivo(bufferXLS(rows), "vazio.xlsx");
+    const { bolsas } = await parsearArquivo(bufferXLS(rows), "vazio.xlsx");
     expect(bolsas).toHaveLength(0);
   });
 
@@ -153,7 +153,7 @@ describe("parsearArquivo — Excel (.xlsx)", () => {
       ["B3087", "100", "CH", 1, "", "B", "P"],          // sem validade
       ["B3087", "101", "CP", 1, "20/06/2026", "O", "N"], // válida
     ];
-    const bolsas = await parsearArquivo(bufferXLS(rows), "parcial.xlsx");
+    const { bolsas } = await parsearArquivo(bufferXLS(rows), "parcial.xlsx");
     expect(bolsas).toHaveLength(1);
   });
 
@@ -177,7 +177,7 @@ describe("parsearArquivo — PDF (.pdf)", () => {
   test("extrai bolsas do PDF no formato real", async () => {
     mockPdfParse.mockResolvedValue({ text: PDF_VALIDO });
 
-    const bolsas = await parsearArquivo(Buffer.from("dummy"), "08052026HMT.PDF");
+    const { bolsas } = await parsearArquivo(Buffer.from("dummy"), "08052026HMT.PDF");
 
     expect(bolsas).toHaveLength(5);
     expect(bolsas[0]).toMatchObject({
@@ -202,13 +202,13 @@ B3087 26010111 CH 1 12/05/2026 23:59 AT - HMT B P
 Total => 1
       `,
     });
-    const bolsas = await parsearArquivo(Buffer.from("dummy"), "teste.pdf");
+    const { bolsas } = await parsearArquivo(Buffer.from("dummy"), "teste.pdf");
     expect(bolsas).toHaveLength(1);
   });
 
   test("PDF sem bolsas retorna array vazio", async () => {
     mockPdfParse.mockResolvedValue({ text: PDF_SEM_DADOS });
-    const bolsas = await parsearArquivo(Buffer.from("dummy"), "vazio.pdf");
+    const { bolsas } = await parsearArquivo(Buffer.from("dummy"), "vazio.pdf");
     expect(bolsas).toHaveLength(0);
   });
 
@@ -219,7 +219,7 @@ B3087 26010111 CH 1 12/05/2026 23:59 AT - HMT X P
 B3087 26014090 CP 1 09/05/2026 23:59 AT - HMT O N
       `,
     });
-    const bolsas = await parsearArquivo(Buffer.from("dummy"), "abo.pdf");
+    const { bolsas } = await parsearArquivo(Buffer.from("dummy"), "abo.pdf");
     expect(bolsas).toHaveLength(1);
     expect(bolsas[0].abo).toBe("O");
   });
@@ -236,7 +236,7 @@ describe("parsearArquivo — Excel formato real (offset de coluna)", () => {
       ["B3087", 26014090, "", "CP", 1, "09/05/2026 23:59", "", "AT - HMT", "", "", "", "O", "P"],
       ["VITA",  26010119, "", "CH", 1, "11/05/2026 23:59", "", "AT - HMT", "", "", "", "B", "P"],
     ];
-    const bolsas = await parsearArquivo(bufferXLSFormatoReal(dataRows), "08052026HMT.XLS");
+    const { bolsas } = await parsearArquivo(bufferXLSFormatoReal(dataRows), "08052026HMT.XLS");
 
     expect(bolsas).toHaveLength(3);
     expect(bolsas[0]).toMatchObject({
@@ -254,7 +254,7 @@ describe("parsearArquivo — Excel formato real (offset de coluna)", () => {
     const dataRows = [
       ["B3087", 26015279, "", "CP", 1, "10/05/2026 23:59", "", "AT - HMT", "", "", "", "O", "N"],
     ];
-    const bolsas = await parsearArquivo(bufferXLSFormatoReal(dataRows), "08052026HMT.XLS");
+    const { bolsas } = await parsearArquivo(bufferXLSFormatoReal(dataRows), "08052026HMT.XLS");
     expect(bolsas[0].fatorRh).toBe("N");
   });
 
@@ -263,7 +263,7 @@ describe("parsearArquivo — Excel formato real (offset de coluna)", () => {
       ["B3087", 26010111, "", "CH", 1, "12/05/2026 23:59", "", "AT - HMT", "", "", "", "B", "P"],
       ["", "", "", "", "", "", "", "", "", "", "Total =>", 1, ""],
     ];
-    const bolsas = await parsearArquivo(bufferXLSFormatoReal(dataRows), "08052026HMT.XLS");
+    const { bolsas } = await parsearArquivo(bufferXLSFormatoReal(dataRows), "08052026HMT.XLS");
     expect(bolsas).toHaveLength(1);
   });
 
@@ -283,7 +283,7 @@ describe("parsearArquivo — Excel formato real (offset de coluna)", () => {
       ["VITA",  26010119, "", "CH", 1, "11/05/2026 23:59", "", "AT - HMT", "", "", "", "B",  "P"],
       ["", "", "", "", "", "", "", "", "", "", "Total =>", 12, ""],
     ];
-    const bolsas = await parsearArquivo(bufferXLSFormatoReal(dataRows), "08052026HMT.XLS");
+    const { bolsas } = await parsearArquivo(bufferXLSFormatoReal(dataRows), "08052026HMT.XLS");
     expect(bolsas).toHaveLength(12);
 
     const aboValores = bolsas.map((b) => b.abo);
