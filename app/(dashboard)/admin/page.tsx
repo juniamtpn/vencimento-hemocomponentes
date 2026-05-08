@@ -2,9 +2,10 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { usuarios } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { usuarios, agencias } from "@/lib/db/schema";
+import { eq, ne } from "drizzle-orm";
 import Link from "next/link";
+import AdminView from "./AdminView";
 
 export const dynamic = "force-dynamic";
 
@@ -13,83 +14,87 @@ export default async function AdminPage() {
   if (!session) redirect("/login");
   if (session.user.perfil !== "admin") redirect("/dashboard");
 
-  const pendentes = await db.query.usuarios.findMany({
-    where: eq(usuarios.status, "pendente"),
-  });
+  const [pendentes, naoP, todasAgencias] = await Promise.all([
+    db.query.usuarios.findMany({ where: eq(usuarios.status, "pendente") }),
+    db.query.usuarios.findMany({ where: ne(usuarios.status, "pendente") }),
+    db.query.agencias.findMany(),
+  ]);
 
-  const aprovados = await db.query.usuarios.findMany({
-    where: eq(usuarios.status, "aprovado"),
-  });
+  const agenciasMap = new Map(todasAgencias.map((a) => [a.id, a]));
 
-  const rejeitados = await db.query.usuarios.findMany({
-    where: eq(usuarios.status, "rejeitado"),
-  });
+  const pendentesInfo = pendentes.map((u) => ({
+    id: u.id,
+    nome: u.nome,
+    email: u.email,
+    agenciaNome: u.agenciaId ? (agenciasMap.get(u.agenciaId)?.nome ?? "—") : "—",
+    justificativa: u.justificativa,
+    createdAt: u.createdAt,
+  }));
+
+  const usuariosInfo = naoP.map((u) => ({
+    id: u.id,
+    nome: u.nome,
+    email: u.email,
+    agenciaNome: u.agenciaId ? (agenciasMap.get(u.agenciaId)?.nome ?? "—") : "—",
+    agenciaId: u.agenciaId,
+    perfil: u.perfil as "admin" | "viewer" | "lideranca",
+    status: u.status as "aprovado" | "rejeitado",
+  }));
+
+  const agenciasOptions = todasAgencias.map((a) => ({
+    id: a.id,
+    nome: a.nome,
+    codigo: a.codigo,
+  }));
+
+  const ativos = naoP.filter((u) => u.status === "aprovado").length;
+  const rejeitados = naoP.filter((u) => u.status === "rejeitado").length;
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-bold text-white">Painel de Administração</h2>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-[#16213e] rounded-xl border border-[#0f3460] p-5">
-          <p className="text-gray-400 text-xs mb-1">Aprovações Pendentes</p>
-          <p className="text-2xl font-bold text-yellow-400">{pendentes.length}</p>
-          {pendentes.length > 0 && (
-            <Link
-              href="/admin/aprovacoes"
-              className="text-xs text-[#C8102E] hover:underline mt-2 block"
-            >
-              Ver solicitações →
-            </Link>
-          )}
-        </div>
-        <div className="bg-[#16213e] rounded-xl border border-[#0f3460] p-5">
-          <p className="text-gray-400 text-xs mb-1">Usuários Ativos</p>
-          <p className="text-2xl font-bold text-green-400">{aprovados.length}</p>
-        </div>
-        <div className="bg-[#16213e] rounded-xl border border-[#0f3460] p-5">
-          <p className="text-gray-400 text-xs mb-1">Acessos Rejeitados</p>
-          <p className="text-2xl font-bold text-gray-500">{rejeitados.length}</p>
-        </div>
-      </div>
-
-      <div className="flex gap-4 flex-wrap">
-        <Link
-          href="/admin/aprovacoes"
-          className="bg-[#C8102E] hover:bg-red-700 text-white font-semibold py-2.5 px-5 rounded-lg transition-colors text-sm"
-        >
-          Gerenciar Solicitações
-        </Link>
+    <div className="max-w-screen-xl mx-auto px-5 py-6 space-y-6">
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-sm">
         <Link
           href="/dashboard"
-          className="bg-[#0f3460] hover:bg-[#0f3460]/70 text-white font-semibold py-2.5 px-5 rounded-lg transition-colors text-sm"
+          className="flex items-center gap-1 text-slate-400 hover:text-slate-700 transition-colors"
         >
-          Ver Dashboard
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+          </svg>
+          Dashboard
         </Link>
+        <span className="text-slate-300">/</span>
+        <span className="text-slate-600 font-medium">Administração</span>
       </div>
 
-      {aprovados.length > 0 && (
-        <div className="bg-[#16213e] rounded-xl border border-[#0f3460] p-5">
-          <h3 className="text-white font-semibold mb-4 text-sm">
-            Usuários com Acesso ({aprovados.length})
-          </h3>
-          <div className="space-y-2">
-            {aprovados.map((u) => (
-              <div
-                key={u.id}
-                className="flex items-center justify-between text-sm py-2 border-b border-[#0f3460]/50 last:border-0"
-              >
-                <div>
-                  <p className="text-white">{u.nome}</p>
-                  <p className="text-gray-500 text-xs">{u.email}</p>
-                </div>
-                <span className="text-xs px-2 py-0.5 rounded-full border border-[#0f3460] text-gray-400 capitalize">
-                  {u.perfil}
-                </span>
-              </div>
-            ))}
-          </div>
+      {/* Header */}
+      <div>
+        <h1 className="text-xl font-bold text-slate-900">Painel de Administração</h1>
+        <p className="text-slate-500 text-sm mt-0.5">Gerencie acessos e usuários do sistema</p>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <p className="text-xs font-medium text-amber-600 uppercase tracking-wide">Pendentes</p>
+          <p className="text-3xl font-bold text-amber-700 mt-1">{pendentes.length}</p>
         </div>
-      )}
+        <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+          <p className="text-xs font-medium text-green-600 uppercase tracking-wide">Ativos</p>
+          <p className="text-3xl font-bold text-green-700 mt-1">{ativos}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Rejeitados</p>
+          <p className="text-3xl font-bold text-slate-600 mt-1">{rejeitados}</p>
+        </div>
+      </div>
+
+      {/* Main content */}
+      <AdminView
+        pendentes={pendentesInfo}
+        usuarios={usuariosInfo}
+        agencias={agenciasOptions}
+      />
     </div>
   );
 }
