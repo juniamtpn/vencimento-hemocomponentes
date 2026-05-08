@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import { fmtTelefone } from "@/lib/format";
 
 interface PendenteInfo {
   id: string;
@@ -330,7 +331,7 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
                         <td className="px-4 py-3">
                           <p className="font-medium text-slate-800">{u.nome}</p>
                           <p className="text-xs text-slate-400">{u.email}</p>
-                          {u.telefone && <p className="text-xs text-slate-400 mt-0.5">{u.telefone}</p>}
+                          {u.telefone && <p className="text-xs text-slate-400 mt-0.5">{fmtTelefone(u.telefone)}</p>}
                         </td>
                         <td className="px-4 py-3 text-xs text-slate-500 hidden md:table-cell">{u.agenciasLabel}</td>
                         <td className="px-4 py-3">

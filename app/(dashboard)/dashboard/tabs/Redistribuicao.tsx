@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import type { BolsaEnriquecida, AgenciaStatus } from "../types";
 import { Badge } from "@/components/ui/badge";
+import { fmtTelefone } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -150,7 +151,7 @@ export default function Redistribuicao({ bolsas, agencias }: Props) {
             <span className="text-sm text-slate-600">
               <span className="font-semibold">{lideranca.liderancaNome}</span>
               {lideranca.liderancaTelefone && (
-                <span className="text-slate-400 ml-2">· {lideranca.liderancaTelefone}</span>
+                <span className="text-slate-400 ml-2">· {fmtTelefone(lideranca.liderancaTelefone)}</span>
               )}
             </span>
           </div>

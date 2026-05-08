@@ -3,6 +3,7 @@
 import type { LiderancaInfo } from "../types";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { fmtTelefone } from "@/lib/format";
 
 interface Props {
   liderancas: LiderancaInfo[];
@@ -96,7 +97,7 @@ export default function Liderancas({ liderancas }: Props) {
                         <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 0 0 6 3.75v16.5a2.25 2.25 0 0 0 2.25 2.25h7.5A2.25 2.25 0 0 0 18 20.25V3.75a2.25 2.25 0 0 0-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 8.25h3" />
                         </svg>
-                        {l.telefone}
+                        {fmtTelefone(l.telefone)}
                       </span>
                     ) : null}
                     {l.email ? (
