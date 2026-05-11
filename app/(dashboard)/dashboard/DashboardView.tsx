@@ -6,10 +6,9 @@ import type { BolsaEnriquecida, AgenciaStatus, LiderancaInfo } from "./types";
 import UploadAgencia from "./tabs/UploadAgencia";
 import PainelVencimentos from "./tabs/PainelVencimentos";
 import Alertas from "./tabs/Alertas";
-import Redistribuicao from "./tabs/Redistribuicao";
 import Liderancas from "./tabs/Liderancas";
 
-type Tab = "upload" | "painel" | "alertas" | "redistribuicao" | "liderancas";
+type Tab = "upload" | "painel" | "alertas" | "liderancas";
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   {
@@ -36,15 +35,6 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
     icon: (
       <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
-      </svg>
-    ),
-  },
-  {
-    id: "redistribuicao",
-    label: "Redistribuição",
-    icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
       </svg>
     ),
   },
@@ -167,10 +157,7 @@ export default function DashboardView({
         {abaAtiva === "alertas" && (
           <Alertas bolsas={bolsas} agencias={agenciasStatus} />
         )}
-        {abaAtiva === "redistribuicao" && (
-          <Redistribuicao bolsas={bolsas} agencias={agenciasStatus} />
-        )}
-        {abaAtiva === "liderancas" && <Liderancas liderancas={liderancas} />}
+        {abaAtiva === "liderancas" && <Liderancas liderancas={liderancas} bolsas={bolsas} perfil={perfil} />}
       </div>
     </div>
   );
