@@ -1,4 +1,4 @@
-import { graphFetch, encodeShareUrl } from "./graph-api";
+import { graphFetch } from "./graph-api";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -24,7 +24,8 @@ async function listarPasta(driveId: string, itemId: string): Promise<{ id: strin
   return data.value ?? [];
 }
 
-// Obtém driveId e itemId da pasta raiz compartilhada.
+// Obtém driveId e itemId da pasta configurada via email do proprietário do OneDrive.
+// Files.Read.All (application) permite acesso direto ao drive de qualquer usuário do tenant.
 // Cache por 10 min — evita N chamadas redundantes por execução de cron.
 let _rootInfoCache: { driveId: string; itemId: string; expiresAt: number } | null = null;
 
@@ -33,19 +34,34 @@ export async function getShareRootInfo(): Promise<{ driveId: string; itemId: str
     return _rootInfoCache;
   }
 
-  const shareUrl = process.env.ONEDRIVE_SHARING_URL;
-  if (!shareUrl) {
-    throw new Error("[OneDrive] Variável ONEDRIVE_SHARING_URL não configurada. Adicione-a nas variáveis de ambiente do Vercel.");
+  const userEmail = process.env.ONEDRIVE_USER_EMAIL;
+  if (!userEmail) {
+    throw new Error("[OneDrive] Variável ONEDRIVE_USER_EMAIL não configurada. Defina o email do proprietário da pasta no OneDrive.");
   }
 
-  const encoded = encodeShareUrl(shareUrl);
-  const res = await graphFetch(`/shares/${encoded}/root?$select=id,parentReference`);
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`[OneDrive] Erro ao obter pasta raiz: ${err}`);
+  // 1. Obter o driveId do usuário
+  const driveRes = await graphFetch(`/users/${encodeURIComponent(userEmail)}/drive?$select=id`);
+  if (!driveRes.ok) {
+    const err = await driveRes.text();
+    throw new Error(`[OneDrive] Erro ao obter drive do usuário ${userEmail}: ${err}`);
   }
-  const data = await res.json();
-  const result = { driveId: data.parentReference.driveId, itemId: data.id, expiresAt: Date.now() + 10 * 60 * 1000 };
+  const driveData = await driveRes.json();
+  const driveId: string = driveData.id;
+
+  // 2. Obter o itemId da pasta (raiz ou subpasta configurada)
+  const folderPath = process.env.ONEDRIVE_FOLDER_PATH ?? "";
+  const folderEndpoint = folderPath
+    ? `/drives/${driveId}/root:${folderPath}?$select=id`
+    : `/drives/${driveId}/root?$select=id`;
+
+  const folderRes = await graphFetch(folderEndpoint);
+  if (!folderRes.ok) {
+    const err = await folderRes.text();
+    throw new Error(`[OneDrive] Erro ao obter pasta "${folderPath || "raiz"}": ${err}`);
+  }
+  const folderData = await folderRes.json();
+
+  const result = { driveId, itemId: folderData.id, expiresAt: Date.now() + 10 * 60 * 1000 };
   _rootInfoCache = result;
   return result;
 }
