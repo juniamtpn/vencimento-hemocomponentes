@@ -24,8 +24,12 @@ async function listarPasta(driveId: string, itemId: string): Promise<{ id: strin
   return data.value ?? [];
 }
 
-// Obtém driveId e itemId da pasta configurada via email do proprietário do OneDrive.
-// Files.Read.All (application) permite acesso direto ao drive de qualquer usuário do tenant.
+// Converte email para o formato de pasta pessoal do SharePoint
+// junia.nascimento@vitahemoterapia.com.br → junia_nascimento_vitahemoterapia_com_br
+function emailToSharePointUser(email: string): string {
+  return email.replace(/[@.]/g, "_");
+}
+
 // Cache por 10 min — evita N chamadas redundantes por execução de cron.
 let _rootInfoCache: { driveId: string; itemId: string; expiresAt: number } | null = null;
 
@@ -34,21 +38,56 @@ export async function getShareRootInfo(): Promise<{ driveId: string; itemId: str
     return _rootInfoCache;
   }
 
+  let driveId: string | undefined;
+
+  // Caminho 1 (mais rápido): drive ID hardcoded via ONEDRIVE_DRIVE_ID
+  // Obtenha em: GET /api/admin/diagnostico-onedrive → campo drive_id
+  const directDriveId = process.env.ONEDRIVE_DRIVE_ID;
+  if (directDriveId) {
+    driveId = directDriveId;
+  }
+
   const userEmail = process.env.ONEDRIVE_USER_EMAIL;
-  if (!userEmail) {
-    throw new Error("[OneDrive] Variável ONEDRIVE_USER_EMAIL não configurada. Defina o email do proprietário da pasta no OneDrive.");
+  const sharepointHost = process.env.ONEDRIVE_SHAREPOINT_HOST;
+
+  // Caminho 2: /users/{email}/drive
+  if (!driveId && userEmail) {
+    const driveRes = await graphFetch(`/users/${encodeURIComponent(userEmail)}/drive?$select=id`);
+    if (driveRes.ok) {
+      const driveData = await driveRes.json();
+      driveId = driveData.id;
+    } else {
+      const errText = await driveRes.text();
+      console.warn(`[OneDrive] /users/${userEmail}/drive falhou, tentando via SharePoint site: ${errText}`);
+    }
   }
 
-  // 1. Obter o driveId do usuário
-  const driveRes = await graphFetch(`/users/${encodeURIComponent(userEmail)}/drive?$select=id`);
-  if (!driveRes.ok) {
-    const err = await driveRes.text();
-    throw new Error(`[OneDrive] Erro ao obter drive do usuário ${userEmail}: ${err}`);
-  }
-  const driveData = await driveRes.json();
-  const driveId: string = driveData.id;
+  // Caminho 3: /sites/{host}:/personal/{sanitizedUser}:/drive (Sites.Read.All)
+  // Funciona mesmo quando /users/ não resolve (OneDrive não provisionado via UPN)
+  if (!driveId) {
+    if (!userEmail && !sharepointHost) {
+      throw new Error("[OneDrive] Configure ONEDRIVE_DRIVE_ID, ONEDRIVE_USER_EMAIL ou ONEDRIVE_SHAREPOINT_HOST.");
+    }
 
-  // 2. Obter o itemId da pasta (raiz ou subpasta configurada)
+    const host = sharepointHost ?? (() => {
+      const domain = userEmail!.split("@")[1];
+      const org = domain.split(".")[0];
+      return `${org}-my.sharepoint.com`;
+    })();
+
+    const spUser = emailToSharePointUser(userEmail!);
+    const siteRes = await graphFetch(`/sites/${host}:/personal/${spUser}:/drive?$select=id`);
+    if (!siteRes.ok) {
+      const err = await siteRes.text();
+      throw new Error(`[OneDrive] Erro ao obter drive via SharePoint (${host}/personal/${spUser}): ${err}`);
+    }
+    const siteData = await siteRes.json();
+    driveId = siteData.id;
+  }
+
+  if (!driveId) throw new Error("[OneDrive] Não foi possível obter o drive ID.");
+
+  // Obter itemId da pasta configurada (raiz ou subpasta)
   const folderPath = process.env.ONEDRIVE_FOLDER_PATH ?? "";
   const folderEndpoint = folderPath
     ? `/drives/${driveId}/root:${folderPath}?$select=id`
@@ -61,7 +100,7 @@ export async function getShareRootInfo(): Promise<{ driveId: string; itemId: str
   }
   const folderData = await folderRes.json();
 
-  const result = { driveId, itemId: folderData.id, expiresAt: Date.now() + 10 * 60 * 1000 };
+  const result = { driveId, itemId: folderData.id as string, expiresAt: Date.now() + 10 * 60 * 1000 };
   _rootInfoCache = result;
   return result;
 }
