@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import type { AgenciaStatus } from "../types";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +32,8 @@ export default function UploadAgencia({ agencias, dataHoje }: Props) {
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<{ message: string; hint?: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
   const enviadas    = agencias.filter((a) => a.status === "processado").length;
   const semArquivo  = agencias.filter((a) => a.status === "sem_arquivo").length;
@@ -210,10 +213,10 @@ export default function UploadAgencia({ agencias, dataHoje }: Props) {
       </div>
 
       {/* Modal de importação manual */}
-      {modalAberto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={fecharModal}>
+      {mounted && modalAberto && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={fecharModal}>
           <div
-            className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6 space-y-5"
+            className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-5"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
@@ -305,7 +308,8 @@ export default function UploadAgencia({ agencias, dataHoje }: Props) {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

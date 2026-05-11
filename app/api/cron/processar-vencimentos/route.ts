@@ -14,7 +14,9 @@ export async function GET(request: NextRequest) {
     const resultado = await processarVencimentos();
     return NextResponse.json({ ok: true, ...resultado });
   } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    const stack = error instanceof Error ? error.stack : undefined;
     console.error("[Cron] Erro no processamento:", error);
-    return NextResponse.json({ error: "Erro no processamento" }, { status: 500 });
+    return NextResponse.json({ error: "Erro no processamento", detail: msg, stack }, { status: 500 });
   }
 }

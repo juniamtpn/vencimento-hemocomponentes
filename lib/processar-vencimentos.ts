@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { agencias, registrosDiarios, bolsas, usuarioAgencias, usuarios } from "@/lib/db/schema";
+import { registrosDiarios, bolsas, usuarios } from "@/lib/db/schema";
 import { buscarArquivoAgencia, baixarArquivo } from "@/lib/onedrive";
 import { parsearArquivo } from "@/lib/file-parser";
 import {
@@ -196,10 +196,14 @@ export async function processarVencimentos(): Promise<{
     await Promise.all(todasAgencias.slice(i, i + LOTE).map(processarAgencia));
   }
 
-  // Send notifications
-  await Promise.all([
-    notificarAgenciasSemArquivo(semArquivo),
-    notificarResponsaveisArquivoFaltando(Array.from(semArquivoPorResponsavel.values())),
+  // Send notifications — errors are logged but never abort the processing result
+  await Promise.allSettled([
+    notificarAgenciasSemArquivo(semArquivo).catch((e) =>
+      console.error("[Cron] Falha ao notificar webhook geral:", e)
+    ),
+    notificarResponsaveisArquivoFaltando(Array.from(semArquivoPorResponsavel.values())).catch((e) =>
+      console.error("[Cron] Falha ao notificar responsáveis:", e)
+    ),
   ]);
 
   return { date: hoje, resultados };
