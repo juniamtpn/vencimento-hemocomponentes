@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { registrosDiarios, bolsas, usuarios, execucoesCron } from "@/lib/db/schema";
-import { buscarArquivoAgencia, baixarArquivo } from "@/lib/onedrive";
+import { buscarArquivoAgencia, baixarArquivo, getShareRootInfo } from "@/lib/onedrive";
 import { parsearArquivo } from "@/lib/file-parser";
 import {
   notificarAgenciasSemArquivo,
@@ -54,9 +54,17 @@ export async function processarVencimentos(triggeredBy: "cron" | "manual" = "cro
     }
   }
 
+  // Resolve pasta raiz uma única vez para todas as agências
+  let rootInfo: { driveId: string; itemId: string } | undefined;
+  try {
+    rootInfo = await getShareRootInfo();
+  } catch (err) {
+    console.error("[Cron] Não foi possível obter pasta raiz do OneDrive:", err);
+  }
+
   async function processarAgencia(agencia: typeof todasAgencias[0]) {
     try {
-      const arquivo = await buscarArquivoAgencia(agencia.codigo, agora);
+      const arquivo = await buscarArquivoAgencia(agencia.codigo, agora, rootInfo);
 
       if (!arquivo) {
         semArquivo.push(agencia.nome);

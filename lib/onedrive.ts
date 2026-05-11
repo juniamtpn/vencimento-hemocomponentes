@@ -8,32 +8,12 @@ export interface ArquivoOneDrive {
   downloadUrl: string;
 }
 
-const MESES_PT: Record<string, string> = {
-  Janeiro: "01", Fevereiro: "02", Março: "03", Abril: "04",
-  Maio: "05", Junho: "06", Julho: "07", Agosto: "08",
-  Setembro: "09", Outubro: "10", Novembro: "11", Dezembro: "12",
-};
-
 function getMesAtual(): string {
   const mes = format(new Date(), "MMMM", { locale: ptBR });
   return mes.charAt(0).toUpperCase() + mes.slice(1);
 }
 
-// Resolve a pasta raiz compartilhada via sharing URL
-async function getRootFolderItems(): Promise<{ id: string; name: string; folder?: object }[]> {
-  const shareUrl = process.env.ONEDRIVE_SHARING_URL!;
-  const encoded = encodeShareUrl(shareUrl);
-
-  const res = await graphFetch(`/shares/${encoded}/root/children?$select=id,name,folder`);
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`[OneDrive] Erro ao listar pasta raiz: ${err}`);
-  }
-  const data = await res.json();
-  return data.value ?? [];
-}
-
-// Busca itens dentro de uma pasta pelo ID (usando drives do site)
+// Busca itens dentro de uma pasta pelo ID
 async function listarPasta(driveId: string, itemId: string): Promise<{ id: string; name: string; folder?: object; "@microsoft.graph.downloadUrl"?: string }[]> {
   const res = await graphFetch(`/drives/${driveId}/items/${itemId}/children?$select=id,name,folder,@microsoft.graph.downloadUrl`);
   if (!res.ok) {
@@ -44,29 +24,42 @@ async function listarPasta(driveId: string, itemId: string): Promise<{ id: strin
   return data.value ?? [];
 }
 
-// Obtém driveId e itemId da pasta raiz compartilhada
-async function getShareRootInfo(): Promise<{ driveId: string; itemId: string }> {
-  const shareUrl = process.env.ONEDRIVE_SHARING_URL!;
-  const encoded = encodeShareUrl(shareUrl);
+// Obtém driveId e itemId da pasta raiz compartilhada.
+// Cache por 10 min — evita N chamadas redundantes por execução de cron.
+let _rootInfoCache: { driveId: string; itemId: string; expiresAt: number } | null = null;
 
+export async function getShareRootInfo(): Promise<{ driveId: string; itemId: string }> {
+  if (_rootInfoCache && Date.now() < _rootInfoCache.expiresAt) {
+    return _rootInfoCache;
+  }
+
+  const shareUrl = process.env.ONEDRIVE_SHARING_URL;
+  if (!shareUrl) {
+    throw new Error("[OneDrive] Variável ONEDRIVE_SHARING_URL não configurada. Adicione-a nas variáveis de ambiente do Vercel.");
+  }
+
+  const encoded = encodeShareUrl(shareUrl);
   const res = await graphFetch(`/shares/${encoded}/root?$select=id,parentReference`);
   if (!res.ok) {
     const err = await res.text();
     throw new Error(`[OneDrive] Erro ao obter pasta raiz: ${err}`);
   }
   const data = await res.json();
-  return { driveId: data.parentReference.driveId, itemId: data.id };
+  const result = { driveId: data.parentReference.driveId, itemId: data.id, expiresAt: Date.now() + 10 * 60 * 1000 };
+  _rootInfoCache = result;
+  return result;
 }
 
 // Busca arquivo do dia para uma agência específica
 // Padrão: DDMMYYYYAGENCIA.xlsx ou .pdf (ex: 07052026HMT.xlsx)
 export async function buscarArquivoAgencia(
   codigoAgencia: string,
-  data: Date = new Date()
+  data: Date = new Date(),
+  rootInfo?: { driveId: string; itemId: string }
 ): Promise<ArquivoOneDrive | null> {
   try {
     const mesAtual = getMesAtual();
-    const { driveId, itemId } = await getShareRootInfo();
+    const { driveId, itemId } = rootInfo ?? await getShareRootInfo();
 
     // Listar subpastas da raiz para encontrar pasta do mês
     const subpastas = await listarPasta(driveId, itemId);
