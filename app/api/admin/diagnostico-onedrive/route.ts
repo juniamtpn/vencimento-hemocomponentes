@@ -109,19 +109,44 @@ export async function GET() {
     }
   }
 
-  // Test 5: buscar usuário por nome (requer User.Read.All)
-  if (!driveId && userEmail) {
-    const nome = userEmail.split("@")[0].replace(".", " ");
-    const searchRes = await fetch(
-      `https://graph.microsoft.com/v1.0/users?$filter=startswith(displayName,'${nome.split(" ")[0]}')&$select=id,displayName,userPrincipalName,mail`,
+  // Test 5: qual tenant está o app registrado?
+  const orgRes = await fetch("https://graph.microsoft.com/v1.0/organization?$select=id,displayName,verifiedDomains", { headers });
+  if (orgRes.ok) {
+    const orgBody = await orgRes.json();
+    const tenant = orgBody.value?.[0];
+    result.tenant_app = tenant?.displayName ?? "?";
+    result.tenant_dominios = tenant?.verifiedDomains?.map((d: { name: string }) => d.name) ?? [];
+  }
+
+  // Test 6: buscar usuário por nome (requer User.Read.All)
+  const nome = (userEmail || "junia").split("@")[0].split(".")[0];
+  const searchRes = await fetch(
+    `https://graph.microsoft.com/v1.0/users?$filter=startswith(displayName,'${nome}')&$select=id,displayName,userPrincipalName,mail,assignedLicenses&$top=10`,
+    { headers }
+  );
+  if (searchRes.ok) {
+    const searchBody = await searchRes.json();
+    result.busca_usuario = searchBody.value?.slice(0, 10) ?? [];
+    result.DICA = "Use o 'userPrincipalName' correto como ONEDRIVE_USER_EMAIL";
+  } else {
+    result.busca_usuario = `ERRO: ${searchRes.status}`;
+  }
+
+  // Test 7: tenta UPN pulsa-mg.com.br diretamente (se for tenant diferente)
+  if (!driveId && userEmail.includes("vitahemoterapia")) {
+    const pulsaUpn = userEmail.replace("vitahemoterapia.com.br", "pulsa-mg.com.br");
+    const pulsaRes = await fetch(
+      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(pulsaUpn)}/drive?$select=id,owner`,
       { headers }
     );
-    if (searchRes.ok) {
-      const searchBody = await searchRes.json();
-      result.busca_usuario = searchBody.value?.slice(0, 5) ?? [];
-      result.DICA = "Verifique o userPrincipalName correto acima e atualize ONEDRIVE_USER_EMAIL";
+    const pulsaBody = await pulsaRes.json();
+    if (pulsaRes.ok) {
+      driveId = pulsaBody.id;
+      result.drive_via_pulsa_upn = "OK";
+      result.drive_id = driveId;
+      result.INSTRUCAO = `Adicione ao Vercel: ONEDRIVE_USER_EMAIL=${pulsaUpn} e ONEDRIVE_DRIVE_ID=${driveId}`;
     } else {
-      result.busca_usuario = `ERRO: ${searchRes.status}`;
+      result.drive_via_pulsa_upn = `ERRO ${pulsaRes.status}: ${pulsaBody?.error?.code}`;
     }
   }
 
