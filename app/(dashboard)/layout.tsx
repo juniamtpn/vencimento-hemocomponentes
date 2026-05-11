@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
+import { getDevSession } from "@/lib/dev-session";
 import Link from "next/link";
 import SignOutButton from "./SignOutButton";
 
@@ -18,7 +19,7 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await getServerSession(authOptions);
+  const session = getDevSession() ?? await getServerSession(authOptions);
   if (!session) redirect("/login");
 
   const now = new Date();

@@ -1,5 +1,6 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { getDevSession } from "@/lib/dev-session";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { agencias, registrosDiarios, bolsas, usuarioAgencias, usuarios } from "@/lib/db/schema";
@@ -12,7 +13,7 @@ import type { BolsaEnriquecida, AgenciaStatus, LiderancaInfo } from "./types";
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const session = await getServerSession(authOptions);
+  const session = getDevSession() ?? await getServerSession(authOptions);
   if (!session) redirect("/login");
 
   const hoje = format(toZonedTime(new Date(), "America/Sao_Paulo"), "yyyy-MM-dd");

@@ -1,24 +1,26 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { getDevSession } from "@/lib/dev-session";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { usuarios, agencias, usuarioAgencias } from "@/lib/db/schema";
-import { eq, ne } from "drizzle-orm";
+import { usuarios, agencias, usuarioAgencias, execucoesCron } from "@/lib/db/schema";
+import { eq, ne, desc } from "drizzle-orm";
 import Link from "next/link";
 import AdminView from "./AdminView";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
-  const session = await getServerSession(authOptions);
+  const session = getDevSession() ?? await getServerSession(authOptions);
   if (!session) redirect("/login");
   if (session.user.perfil !== "admin") redirect("/dashboard");
 
-  const [pendentes, naoP, todasAgencias, todasRelacoes] = await Promise.all([
+  const [pendentes, naoP, todasAgencias, todasRelacoes, execucoes] = await Promise.all([
     db.query.usuarios.findMany({ where: eq(usuarios.status, "pendente") }),
     db.query.usuarios.findMany({ where: ne(usuarios.status, "pendente") }),
     db.query.agencias.findMany(),
     db.query.usuarioAgencias.findMany(),
+    db.query.execucoesCron.findMany({ orderBy: desc(execucoesCron.iniciadoEm), limit: 30 }),
   ]);
 
   const agenciasMap = new Map(todasAgencias.map((a) => [a.id, a]));
@@ -124,6 +126,19 @@ export default async function AdminPage() {
         pendentes={pendentesInfo}
         usuarios={usuariosInfo}
         agencias={agenciasOptions}
+        execucoes={execucoes.map((e) => ({
+          id: e.id,
+          iniciadoEm: e.iniciadoEm,
+          finalizadoEm: e.finalizadoEm ?? null,
+          triggeredBy: e.triggeredBy as "cron" | "manual",
+          status: e.status as "sucesso" | "parcial" | "erro" | "erro_fatal",
+          totalAgencias: e.totalAgencias,
+          processadas: e.processadas,
+          semArquivo: e.semArquivo,
+          erros: e.erros,
+          detalhes: e.detalhes ?? null,
+          mensagemErro: e.mensagemErro ?? null,
+        }))}
       />
     </div>
   );

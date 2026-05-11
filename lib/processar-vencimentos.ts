@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { registrosDiarios, bolsas, usuarios } from "@/lib/db/schema";
+import { registrosDiarios, bolsas, usuarios, execucoesCron } from "@/lib/db/schema";
 import { buscarArquivoAgencia, baixarArquivo } from "@/lib/onedrive";
 import { parsearArquivo } from "@/lib/file-parser";
 import {
@@ -20,10 +20,11 @@ export interface ResultadoAgencia {
   bolsas?: number;
 }
 
-export async function processarVencimentos(): Promise<{
+export async function processarVencimentos(triggeredBy: "cron" | "manual" = "cron"): Promise<{
   date: string;
   resultados: ResultadoAgencia[];
 }> {
+  const iniciadoEm = Math.floor(Date.now() / 1000);
   const agora = toZonedTime(new Date(), "America/Sao_Paulo");
   const hoje = format(agora, "yyyy-MM-dd");
 
@@ -205,6 +206,29 @@ export async function processarVencimentos(): Promise<{
       console.error("[Cron] Falha ao notificar responsáveis:", e)
     ),
   ]);
+
+  const finalizadoEm = Math.floor(Date.now() / 1000);
+  const processadas = resultados.filter((r) => r.status === "processado").length;
+  const semArquivoCount = resultados.filter((r) => r.status === "sem_arquivo").length;
+  const errosCount = resultados.filter((r) => !["processado", "sem_arquivo"].includes(r.status)).length;
+
+  let statusExecucao: "sucesso" | "parcial" | "erro";
+  if (errosCount === todasAgencias.length) statusExecucao = "erro";
+  else if (processadas === todasAgencias.length) statusExecucao = "sucesso";
+  else statusExecucao = "parcial";
+
+  await db.insert(execucoesCron).values({
+    id: nanoid(),
+    iniciadoEm,
+    finalizadoEm,
+    triggeredBy,
+    status: statusExecucao,
+    totalAgencias: todasAgencias.length,
+    processadas,
+    semArquivo: semArquivoCount,
+    erros: errosCount,
+    detalhes: JSON.stringify(resultados),
+  }).catch((e) => console.error("[Cron] Falha ao salvar execução:", e));
 
   return { date: hoje, resultados };
 }

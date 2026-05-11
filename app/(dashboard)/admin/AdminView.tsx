@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { fmtTelefone } from "@/lib/format";
 
@@ -32,17 +32,32 @@ interface AgenciaOption {
   responsavelId: string | null;
 }
 
+interface ExecucaoInfo {
+  id: string;
+  iniciadoEm: number;
+  finalizadoEm: number | null;
+  triggeredBy: "cron" | "manual";
+  status: "sucesso" | "parcial" | "erro" | "erro_fatal";
+  totalAgencias: number;
+  processadas: number;
+  semArquivo: number;
+  erros: number;
+  detalhes: string | null;
+  mensagemErro: string | null;
+}
+
 interface Props {
   pendentes: PendenteInfo[];
   usuarios: UsuarioInfo[];
   agencias: AgenciaOption[];
+  execucoes: ExecucaoInfo[];
 }
 
 const PERFIL_LABEL: Record<string, string> = { admin: "Admin", lideranca: "Liderança", viewer: "Viewer" };
 
-type Tab = "pendentes" | "usuarios" | "agencias";
+type Tab = "pendentes" | "usuarios" | "agencias" | "execucoes";
 
-export default function AdminView({ pendentes, usuarios, agencias }: Props) {
+export default function AdminView({ pendentes, usuarios, agencias, execucoes }: Props) {
   const router = useRouter();
 
   // ── tabs ──────────────────────────────────────────────────
@@ -59,6 +74,13 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
   const [editForm, setEditForm] = useState({ nome: "", email: "", telefone: "", perfil: "viewer" });
   const [confirmExcluir, setConfirmExcluir] = useState<string | null>(null);
   const [erroModal, setErroModal] = useState<string | null>(null);
+
+  // ── execucoes state ───────────────────────────────────────
+  const [expandedExecucao, setExpandedExecucao] = useState<string | null>(null);
+
+  const toggleExecucao = useCallback((id: string) => {
+    setExpandedExecucao((prev) => (prev === id ? null : id));
+  }, []);
 
   // ── agencies state ────────────────────────────────────────
   const [agenciasList, setAgenciasList] = useState<AgenciaOption[]>(agencias);
@@ -234,6 +256,10 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
         <TabButton active={tab === "agencias"} onClick={() => setTab("agencias")}>
           Agências
           <span className="text-xs text-slate-400 font-normal">{agenciasList.length}</span>
+        </TabButton>
+        <TabButton active={tab === "execucoes"} onClick={() => setTab("execucoes")}>
+          Execuções
+          <span className="text-xs text-slate-400 font-normal">{execucoes.length}</span>
         </TabButton>
       </div>
 
@@ -541,6 +567,119 @@ export default function AdminView({ pendentes, usuarios, agencias }: Props) {
         />
       )}
 
+      {/* ── EXECUÇÕES ─────────────────────────────────────── */}
+      {tab === "execucoes" && (
+        execucoes.length === 0 ? (
+          <EmptyState icon="check" title="Nenhuma execução registrada ainda." sub="O histórico aparecerá aqui após a primeira execução do cron ou atualização manual." />
+        ) : (
+          <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[640px]">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50">
+                    <Th>Início</Th>
+                    <Th>Origem</Th>
+                    <Th>Status</Th>
+                    <Th>Agências</Th>
+                    <Th>Duração</Th>
+                    <th className="px-4 py-3 w-10" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {execucoes.map((ex) => {
+                    const isExpanded = expandedExecucao === ex.id;
+                    const duracao = ex.finalizadoEm ? ex.finalizadoEm - ex.iniciadoEm : null;
+                    const detalhes: Array<{ agencia: string; codigo: string; status: string }> =
+                      ex.detalhes ? JSON.parse(ex.detalhes) : [];
+                    return (
+                      <>
+                        <tr key={ex.id} className="hover:bg-slate-50/60 transition-colors">
+                          <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
+                            <p className="font-medium">{new Date(ex.iniciadoEm * 1000).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}</p>
+                            <p className="text-xs text-slate-400">{new Date(ex.iniciadoEm * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</p>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${ex.triggeredBy === "cron" ? "bg-slate-50 text-slate-600 border-slate-200" : "bg-blue-50 text-blue-700 border-blue-200"}`}>
+                              {ex.triggeredBy === "cron" ? "Automático" : "Manual"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <ExecucaoStatusBadge status={ex.status} />
+                          </td>
+                          <td className="px-4 py-3 text-xs text-slate-500 space-y-0.5">
+                            {ex.status === "erro_fatal" ? (
+                              <span className="text-red-500 text-xs">—</span>
+                            ) : (
+                              <>
+                                <p><span className="text-green-600 font-medium">{ex.processadas}</span> processadas</p>
+                                {ex.semArquivo > 0 && <p><span className="text-amber-500 font-medium">{ex.semArquivo}</span> sem arquivo</p>}
+                                {ex.erros > 0 && <p><span className="text-red-500 font-medium">{ex.erros}</span> com erro</p>}
+                              </>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-slate-400">
+                            {duracao !== null ? `${duracao}s` : "—"}
+                          </td>
+                          <td className="px-4 py-3">
+                            {(detalhes.length > 0 || ex.mensagemErro) && (
+                              <button
+                                onClick={() => toggleExecucao(ex.id)}
+                                title={isExpanded ? "Recolher" : "Ver detalhes"}
+                                className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                              >
+                                <svg className={`w-4 h-4 transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                                </svg>
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr key={`${ex.id}-detail`}>
+                            <td colSpan={6} className="px-4 pb-4 pt-0 bg-slate-50">
+                              {ex.mensagemErro && (
+                                <div className="mb-3 flex items-start gap-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                                  <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+                                  </svg>
+                                  <span className="font-mono break-all">{ex.mensagemErro}</span>
+                                </div>
+                              )}
+                              {detalhes.length > 0 && (
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1.5">
+                                  {detalhes.map((d) => (
+                                    <div key={d.codigo} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs border ${
+                                      d.status === "processado" ? "bg-green-50 border-green-200 text-green-700" :
+                                      d.status === "sem_arquivo" ? "bg-amber-50 border-amber-200 text-amber-700" :
+                                      d.status === "arquivo_desatualizado" ? "bg-orange-50 border-orange-200 text-orange-700" :
+                                      d.status === "agencia_incorreta" ? "bg-purple-50 border-purple-200 text-purple-700" :
+                                      "bg-red-50 border-red-200 text-red-700"
+                                    }`}>
+                                      <span className="font-mono font-semibold">{d.codigo}</span>
+                                      <span className="text-[10px] opacity-70">{
+                                        d.status === "processado" ? "ok" :
+                                        d.status === "sem_arquivo" ? "sem arquivo" :
+                                        d.status === "arquivo_desatualizado" ? "desatualizado" :
+                                        d.status === "agencia_incorreta" ? "ag. incorreta" :
+                                        "erro"
+                                      }</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
+      )}
+
       {/* ── Modal: excluir agência ────────────────────────── */}
       {confirmExcluirAgenciaId && (
         <ConfirmDeleteModal
@@ -571,6 +710,22 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
 
 function Th({ children, className = "" }: { children?: React.ReactNode; className?: string }) {
   return <th className={`text-left px-4 py-3 text-slate-500 text-[11px] font-semibold uppercase tracking-wide ${className}`}>{children}</th>;
+}
+
+function ExecucaoStatusBadge({ status }: { status: "sucesso" | "parcial" | "erro" | "erro_fatal" }) {
+  const map = {
+    sucesso: { cls: "bg-green-50 text-green-700 border-green-200", dot: "bg-green-500", label: "Sucesso" },
+    parcial: { cls: "bg-amber-50 text-amber-700 border-amber-200", dot: "bg-amber-400", label: "Parcial" },
+    erro: { cls: "bg-red-50 text-red-700 border-red-200", dot: "bg-red-500", label: "Erro OneDrive" },
+    erro_fatal: { cls: "bg-red-100 text-red-800 border-red-300", dot: "bg-red-600", label: "Falha fatal" },
+  };
+  const s = map[status] ?? map.erro;
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${s.cls}`}>
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
+      {s.label}
+    </span>
+  );
 }
 
 function StatusBadge({ status }: { status: "aprovado" | "rejeitado" }) {

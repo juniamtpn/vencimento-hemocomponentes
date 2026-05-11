@@ -87,8 +87,23 @@ export const usuarioAgencias = sqliteTable("usuario_agencias", {
     .references(() => agencias.id),
 });
 
+export const execucoesCron = sqliteTable("execucoes_cron", {
+  id: text("id").primaryKey(),
+  iniciadoEm: integer("iniciado_em").notNull(),
+  finalizadoEm: integer("finalizado_em"),
+  triggeredBy: text("triggered_by").notNull().default("cron"),
+  status: text("status").notNull(),
+  totalAgencias: integer("total_agencias").notNull().default(0),
+  processadas: integer("processadas").notNull().default(0),
+  semArquivo: integer("sem_arquivo").notNull().default(0),
+  erros: integer("erros").notNull().default(0),
+  detalhes: text("detalhes"),
+  mensagemErro: text("mensagem_erro"),
+});
+
 export type AgenciaInsert = typeof agencias.$inferInsert;
 export type UsuarioInsert = typeof usuarios.$inferInsert;
 export type RegistroDiarioInsert = typeof registrosDiarios.$inferInsert;
 export type BolsaInsert = typeof bolsas.$inferInsert;
 export type UsuarioAgenciaInsert = typeof usuarioAgencias.$inferInsert;
+export type ExecucaoCronInsert = typeof execucoesCron.$inferInsert;
