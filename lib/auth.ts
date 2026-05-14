@@ -17,7 +17,7 @@ const azureADMultiTenant = {
   },
   token: { url: "https://login.microsoftonline.com/common/oauth2/v2.0/token" },
   userinfo: { url: "https://graph.microsoft.com/v1.0/me" },
-  checks: ["pkce", "state"] as const,
+  checks: ["state"] as const,
   profile(profile: { id: string; displayName: string; mail?: string; userPrincipalName?: string }) {
     return {
       id: profile.id,
