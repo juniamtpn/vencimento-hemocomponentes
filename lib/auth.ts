@@ -72,6 +72,12 @@ const demoProvider =
     : [];
 
 export const authOptions: NextAuthOptions = {
+  debug: process.env.NODE_ENV !== "production",
+  logger: {
+    error(code, metadata) {
+      console.error("[AUTH]", code, metadata instanceof Error ? metadata.message : JSON.stringify(metadata));
+    },
+  },
   providers: [
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     azureADMultiTenant as any,
