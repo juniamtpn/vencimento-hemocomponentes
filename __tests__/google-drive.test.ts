@@ -302,3 +302,213 @@ describe("baixarArquivo", () => {
     });
   });
 });
+
+describe("limparArquivosAntigos", () => {
+  const setup = () => {
+    process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL = MOCK_EMAIL;
+    process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY = MOCK_KEY;
+    process.env.GOOGLE_DRIVE_FOLDER_ID = MOCK_FOLDER_ID;
+
+    jest.mock("crypto", () => {
+      const actual = jest.requireActual<typeof import("crypto")>("crypto");
+      return { ...actual, createSign: jest.fn(() => ({ update: jest.fn(), sign: jest.fn().mockReturnValue("sig") })) };
+    });
+  };
+
+  it("exclui arquivos com createdTime anterior a ontem e mantém os recentes", async () => {
+    await jest.isolateModulesAsync(async () => {
+      setup();
+
+      const hoje = new Date();
+      hoje.setHours(12, 0, 0, 0);
+      const ontem = new Date(hoje);
+      ontem.setDate(ontem.getDate() - 1);
+      const anteontem = new Date(hoje);
+      anteontem.setDate(anteontem.getDate() - 2);
+
+      global.fetch = jest
+        .fn()
+        // 1: OAuth token
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: MOCK_TOKEN, expires_in: 3600 }), text: async () => "" })
+        // 2: list root → one month folder
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ files: [{ id: "maio-folder", name: "Maio", mimeType: "application/vnd.google-apps.folder" }] }),
+          text: async () => "",
+        })
+        // 3: list month folder → 3 files: hoje, ontem, anteontem
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            files: [
+              { id: "file-hoje", name: "hoje.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", createdTime: hoje.toISOString() },
+              { id: "file-ontem", name: "ontem.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", createdTime: ontem.toISOString() },
+              { id: "file-anteontem", name: "anteontem.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", createdTime: anteontem.toISOString() },
+            ],
+          }),
+          text: async () => "",
+        })
+        // 4: DELETE anteontem → 204
+        .mockResolvedValueOnce({ ok: true, status: 204, text: async () => "" });
+
+      const { limparArquivosAntigos } = await import("@/lib/google-drive");
+      const result = await limparArquivosAntigos(MOCK_FOLDER_ID);
+
+      expect(result.excluidos).toBe(1);
+      expect(result.erros).toBe(0);
+
+      // Verify the DELETE call targeted the anteontem file
+      const calls = (global.fetch as jest.Mock).mock.calls;
+      const deleteCall = calls.find(([url, opts]) => opts?.method === "DELETE");
+      expect(deleteCall).toBeDefined();
+      expect(deleteCall[0]).toContain("file-anteontem");
+    });
+  });
+
+  it("não exclui nada quando todos os arquivos são de hoje ou ontem", async () => {
+    await jest.isolateModulesAsync(async () => {
+      setup();
+
+      const hoje = new Date();
+      hoje.setHours(12, 0, 0, 0);
+      const ontem = new Date(hoje);
+      ontem.setDate(ontem.getDate() - 1);
+
+      global.fetch = jest
+        .fn()
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: MOCK_TOKEN, expires_in: 3600 }), text: async () => "" })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ files: [{ id: "maio-folder", name: "Maio", mimeType: "application/vnd.google-apps.folder" }] }),
+          text: async () => "",
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            files: [
+              { id: "file-hoje", name: "hoje.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", createdTime: hoje.toISOString() },
+              { id: "file-ontem", name: "ontem.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", createdTime: ontem.toISOString() },
+            ],
+          }),
+          text: async () => "",
+        });
+
+      const { limparArquivosAntigos } = await import("@/lib/google-drive");
+      const result = await limparArquivosAntigos(MOCK_FOLDER_ID);
+
+      expect(result.excluidos).toBe(0);
+      expect(result.erros).toBe(0);
+
+      const calls = (global.fetch as jest.Mock).mock.calls;
+      const deleteCall = calls.find(([, opts]) => opts?.method === "DELETE");
+      expect(deleteCall).toBeUndefined();
+    });
+  });
+
+  it("ignora subpastas dentro da pasta do mês", async () => {
+    await jest.isolateModulesAsync(async () => {
+      setup();
+
+      const anteontem = new Date();
+      anteontem.setDate(anteontem.getDate() - 2);
+      anteontem.setHours(0, 0, 0, 0);
+
+      global.fetch = jest
+        .fn()
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: MOCK_TOKEN, expires_in: 3600 }), text: async () => "" })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ files: [{ id: "maio-folder", name: "Maio", mimeType: "application/vnd.google-apps.folder" }] }),
+          text: async () => "",
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            files: [
+              // This is a folder — should be skipped even if old
+              { id: "subfolder-old", name: "old-subfolder", mimeType: "application/vnd.google-apps.folder", createdTime: anteontem.toISOString() },
+            ],
+          }),
+          text: async () => "",
+        });
+
+      const { limparArquivosAntigos } = await import("@/lib/google-drive");
+      const result = await limparArquivosAntigos(MOCK_FOLDER_ID);
+
+      expect(result.excluidos).toBe(0);
+      expect(result.erros).toBe(0);
+    });
+  });
+
+  it("conta erros sem abortar quando exclusão de um arquivo falha", async () => {
+    await jest.isolateModulesAsync(async () => {
+      setup();
+
+      const anteontem = new Date();
+      anteontem.setDate(anteontem.getDate() - 2);
+      anteontem.setHours(0, 0, 0, 0);
+      const anteontem2 = new Date(anteontem);
+      anteontem2.setDate(anteontem2.getDate() - 1);
+
+      global.fetch = jest
+        .fn()
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: MOCK_TOKEN, expires_in: 3600 }), text: async () => "" })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ files: [{ id: "maio-folder", name: "Maio", mimeType: "application/vnd.google-apps.folder" }] }),
+          text: async () => "",
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            files: [
+              { id: "file-old-1", name: "old1.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", createdTime: anteontem.toISOString() },
+              { id: "file-old-2", name: "old2.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", createdTime: anteontem2.toISOString() },
+            ],
+          }),
+          text: async () => "",
+        })
+        // DELETE file-old-1 → success
+        .mockResolvedValueOnce({ ok: true, status: 204, text: async () => "" })
+        // DELETE file-old-2 → failure
+        .mockResolvedValueOnce({ ok: false, status: 403, text: async () => "Forbidden" });
+
+      const { limparArquivosAntigos } = await import("@/lib/google-drive");
+      const result = await limparArquivosAntigos(MOCK_FOLDER_ID);
+
+      expect(result.excluidos).toBe(1);
+      expect(result.erros).toBe(1);
+    });
+  });
+
+  it("ignora arquivos sem createdTime", async () => {
+    await jest.isolateModulesAsync(async () => {
+      setup();
+
+      global.fetch = jest
+        .fn()
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: MOCK_TOKEN, expires_in: 3600 }), text: async () => "" })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ files: [{ id: "maio-folder", name: "Maio", mimeType: "application/vnd.google-apps.folder" }] }),
+          text: async () => "",
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            files: [
+              // No createdTime field
+              { id: "file-no-date", name: "nodatefile.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
+            ],
+          }),
+          text: async () => "",
+        });
+
+      const { limparArquivosAntigos } = await import("@/lib/google-drive");
+      const result = await limparArquivosAntigos(MOCK_FOLDER_ID);
+
+      expect(result.excluidos).toBe(0);
+      expect(result.erros).toBe(0);
+    });
+  });
+});

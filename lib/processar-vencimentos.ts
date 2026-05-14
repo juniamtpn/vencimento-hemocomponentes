@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { registrosDiarios, bolsas, usuarios, execucoesCron } from "@/lib/db/schema";
-import { buscarArquivoAgencia, baixarArquivo, getShareRootInfo } from "@/lib/google-drive";
+import { buscarArquivoAgencia, baixarArquivo, getShareRootInfo, limparArquivosAntigos } from "@/lib/google-drive";
 import { parsearArquivo } from "@/lib/file-parser";
 import {
   notificarAgenciasSemArquivo,
@@ -237,6 +237,14 @@ export async function processarVencimentos(triggeredBy: "cron" | "manual" = "cro
     erros: errosCount,
     detalhes: JSON.stringify(resultados),
   }).catch((e) => console.error("[Cron] Falha ao salvar execução:", e));
+
+  if (rootInfo) {
+    limparArquivosAntigos(rootInfo.itemId)
+      .then(({ excluidos, erros: errosLimpeza }) =>
+        console.log(`[Google Drive] Limpeza: ${excluidos} excluídos, ${errosLimpeza} erros.`)
+      )
+      .catch((e) => console.error("[Google Drive] Falha na limpeza de arquivos antigos:", e));
+  }
 
   return { date: hoje, resultados };
 }
