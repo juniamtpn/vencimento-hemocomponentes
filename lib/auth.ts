@@ -1,10 +1,39 @@
-import { NextAuthOptions } from "next-auth";
-import AzureADProvider from "next-auth/providers/azure-ad";
+import { NextAuthOptions, OAuthConfig } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { db, usuarios } from "@/lib/db";
 import { eq } from "drizzle-orm";
 import { usuarioAgencias } from "@/lib/db/schema";
 import { nanoid } from "nanoid";
+
+type AzureProfile = {
+  sub: string;
+  name: string;
+  email: string;
+  preferred_username: string;
+};
+
+const azureADMultiTenant: OAuthConfig<AzureProfile> = {
+  id: "azure-ad",
+  name: "Microsoft",
+  type: "oauth",
+  authorization: {
+    url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+    params: { scope: "openid profile email", response_type: "code" },
+  },
+  token: { url: "https://login.microsoftonline.com/common/oauth2/v2.0/token" },
+  userinfo: { url: "https://graph.microsoft.com/oidc/userinfo" },
+  checks: ["pkce", "state"],
+  profile(profile) {
+    return {
+      id: profile.sub,
+      name: profile.name,
+      email: profile.email ?? profile.preferred_username,
+      image: null,
+    };
+  },
+  clientId: process.env.AZURE_AD_CLIENT_ID!,
+  clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
+};
 
 const demoProvider =
   process.env.DEMO_MODE === "true"
@@ -49,11 +78,7 @@ const demoProvider =
 
 export const authOptions: NextAuthOptions = {
   providers: [
-    AzureADProvider({
-      clientId: process.env.AZURE_AD_CLIENT_ID!,
-      clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
-      tenantId: "common",
-    }),
+    azureADMultiTenant,
     ...demoProvider,
   ],
   callbacks: {
