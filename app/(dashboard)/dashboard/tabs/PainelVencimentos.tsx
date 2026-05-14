@@ -61,7 +61,7 @@ interface Props {
 
 export default function PainelVencimentos({ bolsas }: Props) {
   const [filtroComp, setFiltroComp] = useState("todos");
-  const [filtroUrg, setFiltroUrg] = useState("relevantes");
+  const [filtroUrg, setFiltroUrg] = useState("todos");
 
   const componentes = useMemo(
     () => ["todos", ...Array.from(new Set(bolsas.map((b) => b.componente))).sort()],

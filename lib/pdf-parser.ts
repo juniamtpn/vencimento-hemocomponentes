@@ -80,6 +80,15 @@ function parsearPDFColunar(linhas: string[], N: number, dataEmissao: string | nu
       continue;
     }
 
+    // Seq colado na data: "106/06/2026 23:59" → seq "1" + data "06/06/2026 23:59"
+    // Ocorre quando o nº de sequência (1-2 dígitos) é extraído na mesma linha que a data.
+    const mergedSeqDate = l.match(/^\d{1,2}(\d{2})\/(\d{2})\/(\d{4})\s+\d{2}:\d{2}$/);
+    if (mergedSeqDate) {
+      const [, d, m, y] = mergedSeqDate;
+      datas.push(`${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`);
+      continue;
+    }
+
     // Número de doação (7-9 dígitos)
     if (/^\d{7,9}$/.test(l)) { doacoes.push(l); continue; }
 
@@ -103,8 +112,25 @@ function parsearPDFColunar(linhas: string[], N: number, dataEmissao: string | nu
     // Fator Rh isolado
     if (/^[PN]$/.test(l)) { fatores.push(l); continue; }
 
+    // ABO colado no fator Rh: "OP" → ABO "O" + fator "P"; "ABN" → ABO "AB" + fator "N"
+    // Ocorre quando as duas colunas são extraídas juntas pelo pdf-parse.
+    const mergedAboFator = l.match(/^(AB|[ABO])([PN])$/);
+    if (mergedAboFator) {
+      standAloneAbos.push(mergedAboFator[1].toUpperCase());
+      fatores.push(mergedAboFator[2]);
+      continue;
+    }
+
     // ABO isolado
     if (ABO_VALIDOS.has(l.toUpperCase())) { standAloneAbos.push(l.toUpperCase()); continue; }
+
+    // Componente colado no seq: "CHBV  1" → componente "CHBV" + seq ignorado
+    // Ocorre antes da primeira data quando o código de componente e o nº seq mesclam.
+    const mergedCompSeq = l.match(/^([A-Z][A-Z0-9]{1,})\s+\d{1,3}$/);
+    if (mergedCompSeq && firstDateIdx >= 0 && idx < firstDateIdx) {
+      componentes.push(mergedCompSeq[1]);
+      continue;
+    }
 
     // Tokens somente maiúsculas — diferenciar por posição
     if (/^[A-Z][A-Z0-9]*$/.test(l) && l.length >= 2) {
