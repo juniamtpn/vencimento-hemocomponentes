@@ -64,9 +64,3 @@ export async function graphFetch(
   }
   throw lastError;
 }
-
-// Encode OneDrive sharing URL for Graph API
-export function encodeShareUrl(shareUrl: string): string {
-  const base64 = Buffer.from(shareUrl).toString("base64url");
-  return `u!${base64}`;
-}

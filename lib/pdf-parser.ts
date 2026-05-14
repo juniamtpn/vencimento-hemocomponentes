@@ -4,22 +4,19 @@ const pdfParse: (buffer: Buffer) => Promise<{ text: string }> =
   (pdfParseModule as any).default ?? pdfParseModule;
 import { classificarUrgencia, normalizarFatorRh, type BolsaParsed, type ParseResult } from "./sheets-parser";
 
-// Matches "DD/MM/YYYY HH:MM" — anchor used to split each data line
 const DATE_TIME_RE = /(\d{2}\/\d{2}\/\d{4})\s+\d{2}:\d{2}/;
-
 const ABO_VALIDOS = new Set(["A", "B", "O", "AB"]);
+
+// ── Parser modo linha (um registro completo por linha) ────────────────────────
 
 function parsearLinhaPDF(linha: string): { bolsa: BolsaParsed; locArm: string | null } | null {
   const match = linha.match(DATE_TIME_RE);
   if (!match) return null;
 
   const inicioData = linha.indexOf(match[0]);
-
-  // Tokens before date: [instituicao, doacao, componente, seq?]
   const antesData = linha.substring(0, inicioData).trim().split(/\s+/).filter(Boolean);
   if (antesData.length < 3) return null;
 
-  // Tokens after "DD/MM/YYYY HH:MM": "AT - HMT B P" → last two are ABO e FatorRh
   const depoisData = linha.substring(inicioData + match[0].length).trim();
   const tokensDepois = depoisData.split(/\s+/).filter(Boolean);
   if (tokensDepois.length < 2) return null;
@@ -33,7 +30,6 @@ function parsearLinhaPDF(linha: string): { bolsa: BolsaParsed; locArm: string | 
   const [d, m, y] = match[1].split("/");
   const validade = `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
 
-  // Extract agency code from "AT - CODE" pattern in Loc.Arm. position
   let locArm: string | null = null;
   if (tokensDepois[0] === "AT" && tokensDepois[1] === "-" && tokensDepois[2]) {
     locArm = tokensDepois[2].toUpperCase();
@@ -53,11 +49,123 @@ function parsearLinhaPDF(linha: string): { bolsa: BolsaParsed; locArm: string | 
   };
 }
 
+// ── Parser modo colunar (pdf-parse extrai coluna a coluna) ────────────────────
+// Ocorre quando o PDF é gerado com colunas independentes.
+// Cada grupo de N linhas consecutivas representa os N valores de uma coluna.
+
+function parsearPDFColunar(linhas: string[], N: number, dataEmissao: string | null): ParseResult {
+  if (N <= 0) return { bolsas: [], dataEmissao, codigoAgencia: null };
+
+  const firstDateIdx = linhas.findIndex(l => /^\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}$/.test(l));
+  let lastAtIdx = -1;
+  for (let i = linhas.length - 1; i >= 0; i--) {
+    if (/^AT\s*-\s*[A-Z0-9]+$/i.test(linhas[i])) { lastAtIdx = i; break; }
+  }
+
+  const datas: string[] = [];
+  const doacoes: string[] = [];
+  const standAloneAbos: string[] = [];
+  const fatores: string[] = [];
+  const atEntries: { code: string; mergedAbo: string | null }[] = [];
+  const componentes: string[] = [];
+  const instituicoes: string[] = [];
+
+  for (let idx = 0; idx < linhas.length; idx++) {
+    const l = linhas[idx];
+
+    // Data DD/MM/YYYY HH:MM exata
+    const dm = l.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+\d{2}:\d{2}$/);
+    if (dm) {
+      datas.push(`${dm[3]}-${dm[2].padStart(2, "0")}-${dm[1].padStart(2, "0")}`);
+      continue;
+    }
+
+    // Número de doação (7-9 dígitos)
+    if (/^\d{7,9}$/.test(l)) { doacoes.push(l); continue; }
+
+    // Números curtos (seq) — ignorar
+    if (/^\d{1,2}$/.test(l)) continue;
+
+    // Linha "AT - CÓDIGO" (pode ter ABO colado no final, ex: "AT - HSEO")
+    const atm = l.match(/^AT\s*-\s*([A-Z0-9]+)$/i);
+    if (atm) {
+      let code = atm[1].toUpperCase();
+      let mergedAbo: string | null = null;
+      if (code.length > 2 && code.endsWith("AB")) {
+        mergedAbo = "AB"; code = code.slice(0, -2);
+      } else if (code.length > 1 && /^[ABO]$/.test(code.slice(-1))) {
+        mergedAbo = code.slice(-1); code = code.slice(0, -1);
+      }
+      if (code.length >= 2) atEntries.push({ code, mergedAbo });
+      continue;
+    }
+
+    // Fator Rh isolado
+    if (/^[PN]$/.test(l)) { fatores.push(l); continue; }
+
+    // ABO isolado
+    if (ABO_VALIDOS.has(l.toUpperCase())) { standAloneAbos.push(l.toUpperCase()); continue; }
+
+    // Tokens somente maiúsculas — diferenciar por posição
+    if (/^[A-Z][A-Z0-9]*$/.test(l) && l.length >= 2) {
+      if (firstDateIdx >= 0 && idx < firstDateIdx) {
+        // Antes das datas → código de componente (CH, CP, PFC…)
+        componentes.push(l);
+      } else if (lastAtIdx >= 0 && idx > lastAtIdx) {
+        // Após o último AT → candidato a instituição (VITA, B3087…)
+        const up = l.toUpperCase();
+        if (!/^(LEGENDA|BOLSAS|TOTAL|PULSA|RUA|TEL|BARRO|COMP|LOC|SEQ|FAT|INST)/.test(up)) {
+          instituicoes.push(l);
+        }
+      }
+    }
+  }
+
+  // Precisa de exatamente N entradas AT, N datas e N fatores
+  if (atEntries.length !== N || datas.length !== N || fatores.length !== N) {
+    return { bolsas: [], dataEmissao, codigoAgencia: null };
+  }
+
+  // Resolve ABO: usa o merged do AT quando disponível, senão consome o próximo standalone
+  let saIdx = 0;
+  const resolvedAbos = atEntries.map(at => at.mergedAbo ?? standAloneAbos[saIdx++] ?? null);
+
+  // codigoAgencia = código AT mais frequente
+  const codeCount = new Map<string, number>();
+  for (const at of atEntries) codeCount.set(at.code, (codeCount.get(at.code) ?? 0) + 1);
+  let codigoAgencia: string | null = null, maxC = 0;
+  codeCount.forEach((c, k) => { if (c > maxC) { maxC = c; codigoAgencia = k; } });
+
+  // Instituição mais frequente entre os candidatos
+  const instCount = new Map<string, number>();
+  for (const i of instituicoes) instCount.set(i, (instCount.get(i) ?? 0) + 1);
+  let bestInst = "?", maxI = 0;
+  instCount.forEach((c, k) => { if (c > maxI) { maxI = c; bestInst = k; } });
+
+  const bolsas: BolsaParsed[] = [];
+  for (let i = 0; i < N; i++) {
+    const abo = resolvedAbos[i];
+    if (!abo || !ABO_VALIDOS.has(abo)) continue;
+    bolsas.push({
+      instituicao: bestInst,
+      doacao: doacoes[i] ?? "?",
+      componente: componentes[i] ?? "?",
+      validade: datas[i],
+      abo,
+      fatorRh: normalizarFatorRh(fatores[i]),
+      urgencia: classificarUrgencia(datas[i]),
+    });
+  }
+
+  return { bolsas, dataEmissao, codigoAgencia };
+}
+
+// ── Ponto de entrada ──────────────────────────────────────────────────────────
+
 export async function parsearPDF(buffer: Buffer): Promise<ParseResult> {
   const data = await pdfParse(buffer);
   const linhas = data.text.split("\n").map((l) => l.trim()).filter(Boolean);
 
-  // Extract emission date from "Emissão: DD/MM/YYYY" in the report header
   const emissaoMatch = data.text.match(/emiss[aã]o[:\s]+(\d{1,2})\/(\d{1,2})\/(\d{4})/i);
   let dataEmissao: string | null = null;
   if (emissaoMatch) {
@@ -65,6 +173,7 @@ export async function parsearPDF(buffer: Buffer): Promise<ParseResult> {
     dataEmissao = `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
   }
 
+  // Tenta modo linha primeiro
   const bolsas: BolsaParsed[] = [];
   const codigoContagem = new Map<string, number>();
 
@@ -78,11 +187,17 @@ export async function parsearPDF(buffer: Buffer): Promise<ParseResult> {
     }
   }
 
-  let codigoAgencia: string | null = null;
-  let maxCount = 0;
-  codigoContagem.forEach((count, code) => {
-    if (count > maxCount) { maxCount = count; codigoAgencia = code; }
-  });
+  if (bolsas.length > 0) {
+    let codigoAgencia: string | null = null;
+    let maxCount = 0;
+    codigoContagem.forEach((count, code) => {
+      if (count > maxCount) { maxCount = count; codigoAgencia = code; }
+    });
+    return { bolsas, dataEmissao, codigoAgencia };
+  }
 
-  return { bolsas, dataEmissao, codigoAgencia };
+  // Fallback: modo colunar (pdf-parse extrai por coluna)
+  const totalMatch = data.text.match(/Total\s*=>\s*(\d+)/i);
+  const N = totalMatch ? parseInt(totalMatch[1], 10) : 0;
+  return parsearPDFColunar(linhas, N, dataEmissao);
 }

@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { registrosDiarios, bolsas, usuarios, execucoesCron } from "@/lib/db/schema";
-import { buscarArquivoAgencia, baixarArquivo, getShareRootInfo } from "@/lib/onedrive";
+import { buscarArquivoAgencia, baixarArquivo, getShareRootInfo } from "@/lib/google-drive";
 import { parsearArquivo } from "@/lib/file-parser";
 import {
   notificarAgenciasSemArquivo,
@@ -59,7 +59,7 @@ export async function processarVencimentos(triggeredBy: "cron" | "manual" = "cro
   try {
     rootInfo = await getShareRootInfo();
   } catch (err) {
-    console.error("[Cron] Não foi possível obter pasta raiz do OneDrive:", err);
+    console.error("[Cron] Não foi possível obter pasta raiz do Google Drive:", err);
   }
 
   async function processarAgencia(agencia: typeof todasAgencias[0]) {

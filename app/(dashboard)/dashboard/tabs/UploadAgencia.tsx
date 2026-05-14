@@ -88,7 +88,7 @@ export default function UploadAgencia({ agencias, dataHoje }: Props) {
             Status de Envio — {fmt(dataHoje)}
           </h2>
           <p className="text-slate-500 text-sm mt-0.5">
-            Planilhas lidas automaticamente pelo OneDrive às 10h (BRT)
+            Planilhas lidas automaticamente pelo Google Drive às 10h (BRT)
           </p>
         </div>
         <div className="flex items-center gap-2">

@@ -155,13 +155,13 @@ export async function notificarArquivoRejeitado(dados: {
       `<p>🚨 <b>${dados.nome}</b>,</p>` +
       `<p>O arquivo <b>${dados.arquivoNome}</b> da agência <b>${dados.agencia}</b> foi recebido, mas <b>não pôde ser processado</b>.</p>` +
       `<p><b>Motivo:</b> A data de emissão do relatório é <b>${fmtDataBR(dados.dataArquivo!)}</b>, mas hoje é <b>${new Date().toLocaleDateString("pt-BR")}</b>. Somente relatórios do dia atual são aceitos.</p>` +
-      `<p>Por favor, exporte um relatório atualizado e reenvie para a pasta do OneDrive.</p>` +
+      `<p>Por favor, exporte um relatório atualizado e reenvie para a pasta do Google Drive.</p>` +
       `<p style="color:#888;font-size:12px;">— PULSA Vencimentos</p>`;
   } else {
     corpo =
       `<p>🚨 <b>${dados.nome}</b>,</p>` +
       `<p>O arquivo <b>${dados.arquivoNome}</b> foi recebido na pasta da agência <b>${dados.codigoEsperado}</b>, mas o relatório identifica a agência <b>${dados.codigoArquivo}</b>.</p>` +
-      `<p>Por favor, verifique se o arquivo correto foi enviado para a pasta de <b>${dados.agencia}</b> no OneDrive.</p>` +
+      `<p>Por favor, verifique se o arquivo correto foi enviado para a pasta de <b>${dados.agencia}</b> no Google Drive.</p>` +
       `<p style="color:#888;font-size:12px;">— PULSA Vencimentos</p>`;
   }
 
