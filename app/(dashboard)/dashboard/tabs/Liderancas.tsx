@@ -98,7 +98,7 @@ export default function Liderancas({ liderancas, bolsas, perfil }: Props) {
     : null;
 
   const agenciasProcessadas = liderancaExpandida
-    ? liderancaExpandida.agencias
+    ? liderancaExpandida.agencias.filter((ag) => ag.status === "processado")
     : [];
 
   const bolsasUrgentes = useMemo(() => {
