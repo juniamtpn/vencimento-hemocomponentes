@@ -1,33 +1,26 @@
-import { NextAuthOptions, OAuthConfig } from "next-auth";
+import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { db, usuarios } from "@/lib/db";
 import { eq } from "drizzle-orm";
 import { usuarioAgencias } from "@/lib/db/schema";
 import { nanoid } from "nanoid";
 
-type AzureProfile = {
-  sub: string;
-  name: string;
-  email: string;
-  preferred_username: string;
-};
-
-const azureADMultiTenant: OAuthConfig<AzureProfile> = {
+const azureADMultiTenant = {
   id: "azure-ad",
   name: "Microsoft",
-  type: "oauth",
+  type: "oauth" as const,
   authorization: {
     url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
     params: { scope: "openid profile email", response_type: "code" },
   },
   token: { url: "https://login.microsoftonline.com/common/oauth2/v2.0/token" },
   userinfo: { url: "https://graph.microsoft.com/oidc/userinfo" },
-  checks: ["pkce", "state"],
-  profile(profile) {
+  checks: ["pkce", "state"] as const,
+  profile(profile: { sub: string; name: string; email?: string; preferred_username?: string }) {
     return {
       id: profile.sub,
       name: profile.name,
-      email: profile.email ?? profile.preferred_username,
+      email: profile.email ?? profile.preferred_username ?? "",
       image: null,
     };
   },
@@ -78,7 +71,8 @@ const demoProvider =
 
 export const authOptions: NextAuthOptions = {
   providers: [
-    azureADMultiTenant,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    azureADMultiTenant as any,
     ...demoProvider,
   ],
   callbacks: {
