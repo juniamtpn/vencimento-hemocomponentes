@@ -1,34 +1,10 @@
 import { NextAuthOptions } from "next-auth";
+import AzureADProvider from "next-auth/providers/azure-ad";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { db, usuarios } from "@/lib/db";
 import { eq } from "drizzle-orm";
 import { usuarioAgencias } from "@/lib/db/schema";
 import { nanoid } from "nanoid";
-
-const azureADMultiTenant = {
-  id: "azure-ad",
-  name: "Microsoft",
-  type: "oauth" as const,
-  authorization: {
-    url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
-    // User.Read sem "openid" evita que a resposta traga id_token,
-    // eliminando a validação de issuer do openid-client que falha em multi-tenant.
-    params: { scope: "User.Read", response_type: "code" },
-  },
-  token: { url: "https://login.microsoftonline.com/common/oauth2/v2.0/token" },
-  userinfo: { url: "https://graph.microsoft.com/v1.0/me" },
-  checks: ["state"] as const,
-  profile(profile: { id: string; displayName: string; mail?: string; userPrincipalName?: string }) {
-    return {
-      id: profile.id,
-      name: profile.displayName,
-      email: profile.mail ?? profile.userPrincipalName ?? "",
-      image: null,
-    };
-  },
-  clientId: process.env.AZURE_AD_CLIENT_ID!,
-  clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
-};
 
 const demoProvider =
   process.env.DEMO_MODE === "true"
@@ -72,15 +48,17 @@ const demoProvider =
     : [];
 
 export const authOptions: NextAuthOptions = {
-  debug: process.env.NODE_ENV !== "production",
   logger: {
     error(code, metadata) {
       console.error("[AUTH]", code, metadata instanceof Error ? metadata.message : JSON.stringify(metadata));
     },
   },
   providers: [
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    azureADMultiTenant as any,
+    AzureADProvider({
+      clientId: process.env.AZURE_AD_CLIENT_ID!,
+      clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
+      tenantId: process.env.AZURE_AD_TENANT_ID!,
+    }),
     ...demoProvider,
   ],
   callbacks: {
