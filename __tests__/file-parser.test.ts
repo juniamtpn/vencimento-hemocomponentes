@@ -328,6 +328,118 @@ describe("parsearArquivo — Sentry captureMessage para arquivo vazio", () => {
   });
 });
 
+// ── Testes: PDF formato compacto (doação+comp mesclados, ABO+fator mesclados) ─
+// Reproduz o padrão dos arquivos HSR, HUB, HSCU, HSG, HS, HVC, HMDBC, HL.
+// Características:
+//   - Antes da data: "[DOACAO+COMP]  [SEQ]" (sem separação entre doação e comp)
+//   - Após a data: "AT - [CODIGO+ABO+FATOR+INST?]" (tudo mesclado)
+
+const PDF_COMPACTO_PADRAO_A = `
+Emissão: 14/05/2026 09:38
+Bolsas vencidas e próximas ao vencimento
+PULSA BH
+RUA JUIZ DE FORA, 941 - BARRO PRETO - BH
+TEL.: (31)3335-6600
+Loc. Arm.ABOFator RhDoaçãoComp.Seq.ValidadeInstituição
+Bolsas Vencidas
+Bolsas próximas ao vencimento
+Legenda :
+26013876CP  116/05/2026 23:59AT - HSRAPVITA
+26013881CP  116/05/2026 23:59AT - HSRAPVITA
+26013883CP  116/05/2026 23:59AT - HSRAPVITA
+26013890CP  116/05/2026 23:59AT - HSRAPVITA
+26013892CP  116/05/2026 23:59AT - HSRAPVITA
+26013895CP  116/05/2026 23:59AT - HSRAPVITA
+26013897CP  116/05/2026 23:59AT - HSRANVITA
+Total =>
+7
+001
+`;
+
+// Padrão B: instituição duplicada antes da doação (HL), mesclagem "HLOP" sem inst.
+const PDF_COMPACTO_PADRAO_B = `
+Emissão: 14/05/2026 08:35
+Bolsas vencidas e próximas ao vencimento
+PULSA BH
+Loc. Arm.ABOFator RhDoaçãoComp.Seq.ValidadeInstituição
+Bolsas Vencidas
+Bolsas próximas ao vencimento
+Legenda :
+B3013B3013   26704764IPPA  113/05/2026 23:59AT - HLOP
+26704846IPPA  114/05/2026 23:59AT - HLOPB3013
+26704875IPPA  115/05/2026 23:59AT - HLOPB3013
+Total =>
+3
+001
+`;
+
+// Padrão com ABO "AB" mesclado: "HSCUABP" = código HSCU + ABO AB + Fator P
+const PDF_COMPACTO_ABO_AB = `
+Emissão: 14/05/2026 09:38
+PULSA BH
+Loc. Arm.ABOFator RhDoaçãoComp.Seq.ValidadeInstituição
+26010525CH  118/05/2026 23:59AT - HSCUABP
+Total =>
+1
+001
+`;
+
+describe("parsearArquivo — PDF formato compacto (doação+comp+ABO+fator mesclados)", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  test("Padrão A: extrai 7 bolsas com doação+comp mesclados e ABO+fator mesclados no AT", async () => {
+    mockPdfParse.mockResolvedValue({ text: PDF_COMPACTO_PADRAO_A });
+    const { bolsas, dataEmissao, codigoAgencia } = await parsearArquivo(Buffer.from("dummy"), "14052026HSR.PDF");
+
+    expect(bolsas).toHaveLength(7);
+    expect(bolsas[0]).toMatchObject({
+      doacao: "26013876",
+      componente: "CP",
+      abo: "A",
+      fatorRh: "P",
+      validade: "2026-05-16",
+    });
+    // Última linha tem fator N (negativo)
+    expect(bolsas[6].fatorRh).toBe("N");
+    expect(bolsas[6].abo).toBe("A");
+    // Código da agência extraído do locArm
+    expect(codigoAgencia).toBe("HSR");
+    expect(dataEmissao).toBe("2026-05-14");
+  });
+
+  test("Padrão B: extrai 3 bolsas com instituição prefixada e inst no sufixo AT", async () => {
+    mockPdfParse.mockResolvedValue({ text: PDF_COMPACTO_PADRAO_B });
+    const { bolsas, codigoAgencia } = await parsearArquivo(Buffer.from("dummy"), "14052026HL.PDF");
+
+    expect(bolsas).toHaveLength(3);
+    expect(bolsas[0]).toMatchObject({ doacao: "26704764", componente: "IPPA", abo: "O", fatorRh: "P" });
+    expect(bolsas[1]).toMatchObject({ doacao: "26704846", componente: "IPPA", abo: "O", fatorRh: "P" });
+    expect(codigoAgencia).toBe("HL");
+  });
+
+  test("Padrão ABO=AB: extrai corretamente quando código AT termina em AB+fator", async () => {
+    mockPdfParse.mockResolvedValue({ text: PDF_COMPACTO_ABO_AB });
+    const { bolsas, codigoAgencia } = await parsearArquivo(Buffer.from("dummy"), "14052026HSCU.PDF");
+
+    expect(bolsas).toHaveLength(1);
+    expect(bolsas[0]).toMatchObject({
+      doacao: "26010525",
+      componente: "CH",
+      abo: "AB",
+      fatorRh: "P",
+    });
+    expect(codigoAgencia).toBe("HSCU");
+  });
+
+  test("não interfere com formato padrão de linha (INST DOACAO COMP DATA AT ABO FATOR)", async () => {
+    mockPdfParse.mockResolvedValue({ text: PDF_VALIDO });
+    const { bolsas } = await parsearArquivo(Buffer.from("dummy"), "08052026HMT.PDF");
+    expect(bolsas).toHaveLength(5);
+    expect(bolsas[0].instituicao).toBe("B3087");
+    expect(bolsas[0].doacao).toBe("26010111");
+  });
+});
+
 // ── Testes: formato inválido ──────────────────────────────────────────────────
 
 describe("parsearArquivo — formato inválido", () => {

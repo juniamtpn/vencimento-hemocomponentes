@@ -6,6 +6,19 @@ import { classificarUrgencia, normalizarFatorRh, type BolsaParsed, type ParseRes
 
 const DATE_TIME_RE = /(\d{2}\/\d{2}\/\d{4})\s+\d{2}:\d{2}/;
 const ABO_VALIDOS = new Set(["A", "B", "O", "AB"]);
+// Doação (7-9 dígitos) colada ao componente (letras maiúsculas), sem espaço.
+// Ex: "26013876CP", "26704764IPPA", "25012884CRI"
+const MERGED_DOACAO_COMP_RE = /^(\d{7,9})([A-Z][A-Z0-9]{1,4})$/;
+
+// Separa o código AT de ABO + Fator Rh (e opcionalmente instituição) mesclados.
+// Ex: "HSRAPVITA" → { code:"HSR", abo:"A", fator:"P", inst:"VITA" }
+//     "HSCUABP"  → { code:"HSCU", abo:"AB", fator:"P", inst:null }
+//     "HLOP"     → { code:"HL",   abo:"O",  fator:"P", inst:null }
+function parsearAtMerge(s: string): { code: string; abo: string; fator: string; inst: string | null } | null {
+  const m = s.match(/^([A-Z0-9]+?)(AB|[ABO])([PN])([A-Z][A-Z0-9]*)?$/);
+  if (!m) return null;
+  return { code: m[1], abo: m[2], fator: m[3], inst: m[4] ?? null };
+}
 
 // ── Parser modo linha (um registro completo por linha) ────────────────────────
 
@@ -15,9 +28,49 @@ function parsearLinhaPDF(linha: string): { bolsa: BolsaParsed; locArm: string | 
 
   const inicioData = linha.indexOf(match[0]);
   const antesData = linha.substring(0, inicioData).trim().split(/\s+/).filter(Boolean);
-  if (antesData.length < 3) return null;
-
   const depoisData = linha.substring(inicioData + match[0].length).trim();
+
+  const [d, m, y] = match[1].split("/");
+  const validade = `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+
+  // ── Formato compacto (Padrão A e B): doação+comp mesclados antes da data ────
+  // Padrão A: ["26013876CP", "1"]  (len 2) – sem instituição antes
+  // Padrão B: ["B3013B3013", "26704764IPPA", "1"]  (len 3) – inst antes do merged
+  //
+  // Sinal: antesData[last-1] é doação+comp mesclados OU antesData[0] é mesclado.
+  // Após a data: "AT - HMDBCOPVITA" – AT code, ABO e Fator Rh mesclados.
+  const lastBeforeSeq = antesData.length >= 2 ? antesData[antesData.length - 2] : (antesData[0] ?? "");
+  const isMergedCompact = MERGED_DOACAO_COMP_RE.test(lastBeforeSeq);
+
+  if (isMergedCompact || antesData.length < 3) {
+    // lastBeforeSeq é "26013876CP" ou similar
+    const dcMatch = lastBeforeSeq.match(MERGED_DOACAO_COMP_RE);
+    if (!dcMatch) return null;
+    const [, doacao, componente] = dcMatch;
+
+    // Instituição: token antes do merged (Padrão B), se existir e não for doação
+    const instituicao = antesData.length >= 3 ? antesData[antesData.length - 3] : "?";
+
+    const atm = depoisData.match(/^AT\s*-\s*([A-Z0-9]+)/i);
+    if (!atm) return null;
+    const parsed = parsearAtMerge(atm[1].toUpperCase());
+    if (!parsed || !ABO_VALIDOS.has(parsed.abo)) return null;
+
+    return {
+      bolsa: {
+        instituicao: parsed.inst ?? instituicao,
+        doacao,
+        componente,
+        validade,
+        abo: parsed.abo,
+        fatorRh: normalizarFatorRh(parsed.fator),
+        urgencia: classificarUrgencia(validade),
+      },
+      locArm: parsed.code,
+    };
+  }
+
+  // ── Formato padrão: [INST] [DOAÇÃO] [COMP] DATA [AT - COD] [ABO] [FATOR] ───
   const tokensDepois = depoisData.split(/\s+/).filter(Boolean);
   if (tokensDepois.length < 2) return null;
 
@@ -26,9 +79,6 @@ function parsearLinhaPDF(linha: string): { bolsa: BolsaParsed; locArm: string | 
   const abo = tokensDepois[tokensDepois.length - 2].toUpperCase();
 
   if (!ABO_VALIDOS.has(abo)) return null;
-
-  const [d, m, y] = match[1].split("/");
-  const validade = `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
 
   let locArm: string | null = null;
   if (tokensDepois[0] === "AT" && tokensDepois[1] === "-" && tokensDepois[2]) {
