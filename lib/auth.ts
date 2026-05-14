@@ -11,16 +11,18 @@ const azureADMultiTenant = {
   type: "oauth" as const,
   authorization: {
     url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
-    params: { scope: "openid profile email", response_type: "code" },
+    // User.Read sem "openid" evita que a resposta traga id_token,
+    // eliminando a validação de issuer do openid-client que falha em multi-tenant.
+    params: { scope: "User.Read", response_type: "code" },
   },
   token: { url: "https://login.microsoftonline.com/common/oauth2/v2.0/token" },
-  userinfo: { url: "https://graph.microsoft.com/oidc/userinfo" },
+  userinfo: { url: "https://graph.microsoft.com/v1.0/me" },
   checks: ["pkce", "state"] as const,
-  profile(profile: { sub: string; name: string; email?: string; preferred_username?: string }) {
+  profile(profile: { id: string; displayName: string; mail?: string; userPrincipalName?: string }) {
     return {
-      id: profile.sub,
-      name: profile.name,
-      email: profile.email ?? profile.preferred_username ?? "",
+      id: profile.id,
+      name: profile.displayName,
+      email: profile.mail ?? profile.userPrincipalName ?? "",
       image: null,
     };
   },

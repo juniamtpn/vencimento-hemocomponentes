@@ -149,6 +149,16 @@ describe("azureADMultiTenant provider config", () => {
     expect(token.url).toContain("/common/");
   });
 
+  it("usa Graph API /v1.0/me (não OIDC userinfo) para evitar id_token", () => {
+    const userinfo = provider.userinfo as { url: string };
+    expect(userinfo.url).toBe("https://graph.microsoft.com/v1.0/me");
+  });
+
+  it("não inclui scope openid para evitar id_token e validação de issuer", () => {
+    const auth = provider.authorization as { url: string; params: { scope: string } };
+    expect(auth.params.scope).not.toContain("openid");
+  });
+
   it("tem checks pkce e state", () => {
     expect(provider.checks).toContain("pkce");
     expect(provider.checks).toContain("state");
