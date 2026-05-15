@@ -35,11 +35,12 @@ export default function UploadAgencia({ agencias, dataHoje }: Props) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
 
-  const enviadas    = agencias.filter((a) => a.status === "processado").length;
-  const semArquivo  = agencias.filter((a) => a.status === "sem_arquivo").length;
-  const comErro     = agencias.filter((a) => a.status === "erro").length;
-  const manuais     = agencias.filter((a) => a.tipoEnvio === "manual").length;
-  const pctEnviadas = agencias.length > 0 ? Math.round((enviadas / agencias.length) * 100) : 0;
+  const enviadas      = agencias.filter((a) => a.status === "processado").length;
+  const semArquivo    = agencias.filter((a) => a.status === "sem_arquivo").length;
+  const comErro       = agencias.filter((a) => a.status === "erro").length;
+  const manuais       = agencias.filter((a) => a.tipoEnvio === "manual").length;
+  const arquivoVazio  = agencias.filter((a) => a.status === "processado" && a.totalBolsas === 0).length;
+  const pctEnviadas   = agencias.length > 0 ? Math.round((enviadas / agencias.length) * 100) : 0;
 
   function abrirModal() {
     setAgenciaSelecionada("");
@@ -131,13 +132,16 @@ export default function UploadAgencia({ agencias, dataHoje }: Props) {
 
       {/* Summary chips */}
       <div className="flex gap-3 flex-wrap">
-        <StatChip label="Enviadas"    count={enviadas}   total={agencias.length} bg="bg-green-50"  border="border-green-200"  text="text-green-700"  dot="bg-green-500" />
-        <StatChip label="Sem arquivo" count={semArquivo} total={agencias.length} bg="bg-slate-50"  border="border-slate-200"  text="text-slate-600"  dot="bg-slate-400" />
+        <StatChip label="Enviadas"       count={enviadas}      total={agencias.length} bg="bg-green-50"  border="border-green-200"  text="text-green-700"  dot="bg-green-500" />
+        <StatChip label="Sem arquivo"    count={semArquivo}    total={agencias.length} bg="bg-slate-50"  border="border-slate-200"  text="text-slate-600"  dot="bg-slate-400" />
+        {arquivoVazio > 0 && (
+          <StatChip label="Arquivo vazio" count={arquivoVazio} total={agencias.length} bg="bg-amber-50"  border="border-amber-300"  text="text-amber-700"  dot="bg-amber-500" />
+        )}
         {comErro > 0 && (
-          <StatChip label="Erro"      count={comErro}    total={agencias.length} bg="bg-red-50"    border="border-red-200"    text="text-red-700"   dot="bg-red-500" />
+          <StatChip label="Erro"          count={comErro}      total={agencias.length} bg="bg-red-50"    border="border-red-200"    text="text-red-700"    dot="bg-red-500" />
         )}
         {manuais > 0 && (
-          <StatChip label="Manuais"   count={manuais}    total={enviadas}        bg="bg-amber-50"  border="border-amber-200"  text="text-amber-700" dot="bg-amber-400" />
+          <StatChip label="Manuais"       count={manuais}      total={enviadas}        bg="bg-amber-50"  border="border-amber-200"  text="text-amber-700"  dot="bg-amber-400" />
         )}
       </div>
 
@@ -156,11 +160,15 @@ export default function UploadAgencia({ agencias, dataHoje }: Props) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {agencias.map((ag) => (
+              {agencias.map((ag) => {
+                const arquivoVazioRow = ag.status === "processado" && ag.totalBolsas === 0;
+                return (
                 <tr
                   key={ag.id}
                   className={`transition-colors ${
-                    ag.tipoEnvio === "manual"
+                    arquivoVazioRow
+                      ? "bg-amber-50/50 hover:bg-amber-50/80"
+                      : ag.tipoEnvio === "manual"
                       ? "bg-amber-50/30 hover:bg-amber-50/60"
                       : "hover:bg-slate-50/60"
                   }`}
@@ -190,7 +198,16 @@ export default function UploadAgencia({ agencias, dataHoje }: Props) {
                   {/* Bolsas */}
                   <td className="px-4 py-3 text-right">
                     {ag.status === "processado" ? (
-                      <span className="font-semibold text-slate-800 tabular-nums">{ag.totalBolsas}</span>
+                      arquivoVazioRow ? (
+                        <span className="font-semibold text-amber-600 tabular-nums flex items-center justify-end gap-1">
+                          0
+                          <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                          </svg>
+                        </span>
+                      ) : (
+                        <span className="font-semibold text-slate-800 tabular-nums">{ag.totalBolsas}</span>
+                      )
                     ) : (
                       <span className="text-slate-300 text-xs">—</span>
                     )}
@@ -203,10 +220,11 @@ export default function UploadAgencia({ agencias, dataHoje }: Props) {
 
                   {/* Status */}
                   <td className="px-4 py-3">
-                    <StatusBadge status={ag.status} />
+                    <StatusBadge status={ag.status} totalBolsas={ag.totalBolsas} />
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -362,7 +380,15 @@ function EnvioCell({ ag }: { ag: AgenciaStatus }) {
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, totalBolsas }: { status: string; totalBolsas: number }) {
+  if (status === "processado" && totalBolsas === 0) {
+    return (
+      <Badge variant="arquivo_vazio" className="gap-1.5 whitespace-nowrap">
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+        Arquivo vazio
+      </Badge>
+    );
+  }
   if (status === "processado") {
     return (
       <Badge variant="processado" className="gap-1.5">

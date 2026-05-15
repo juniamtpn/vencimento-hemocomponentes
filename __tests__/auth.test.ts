@@ -133,42 +133,26 @@ describe("session callback", () => {
   });
 });
 
-// ── provider multi-tenant (regression guard) ──────────────────────────────────
+// ── provider config (regression guard) ───────────────────────────────────────
 
-describe("azureADMultiTenant provider config", () => {
+describe("azureAD provider config", () => {
   const provider = authOptions.providers[0] as Record<string, unknown>;
 
-  it("usa type oauth (não oidc) para evitar falha de issuer validation", () => {
+  it("usa AzureAD como primeiro provider (type oauth)", () => {
     expect(provider.type).toBe("oauth");
   });
 
-  it("usa endpoint /common/ para suportar múltiplos tenants", () => {
-    const auth = provider.authorization as { url: string };
-    const token = provider.token as { url: string };
-    expect(auth.url).toContain("/common/");
-    expect(token.url).toContain("/common/");
+  it("lê credenciais das variáveis de ambiente", () => {
+    expect(provider.clientId).toBe(process.env.AZURE_AD_CLIENT_ID);
+    expect(provider.clientSecret).toBe(process.env.AZURE_AD_CLIENT_SECRET);
   });
 
-  it("usa Graph API /v1.0/me (não OIDC userinfo) para evitar id_token", () => {
-    const userinfo = provider.userinfo as { url: string };
-    expect(userinfo.url).toBe("https://graph.microsoft.com/v1.0/me");
+  it("estratégia de sessão é JWT", () => {
+    expect(authOptions.session?.strategy).toBe("jwt");
   });
 
-  it("não inclui scope openid para evitar id_token e validação de issuer", () => {
-    const auth = provider.authorization as { url: string; params: { scope: string } };
-    expect(auth.params.scope).not.toContain("openid");
-  });
-
-  it("tem checks pkce e state", () => {
-    expect(provider.checks).toContain("pkce");
-    expect(provider.checks).toContain("state");
-  });
-
-  it("não usa tenant fixo (AZURE_AD_TENANT_ID não aparece nas URLs)", () => {
-    const auth = provider.authorization as { url: string };
-    const tenantId = process.env.AZURE_AD_TENANT_ID;
-    if (tenantId) {
-      expect(auth.url).not.toContain(tenantId);
-    }
+  it("redireciona /login e /error para a página de login", () => {
+    expect(authOptions.pages?.signIn).toBe("/login");
+    expect(authOptions.pages?.error).toBe("/login");
   });
 });

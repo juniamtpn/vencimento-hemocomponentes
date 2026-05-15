@@ -440,6 +440,104 @@ describe("parsearArquivo — PDF formato compacto (doação+comp+ABO+fator mescl
   });
 });
 
+// ── Testes: PDF formato Analítico ("Estoque de Componentes - Analítico") ─────
+// Reproduz os arquivos HIO.PDF, HUC.PDF e HBH.PDF onde cada registro ocupa
+// 3 linhas: {ABO+INST+FATOR+COMP}{SEQ}{DATA} / AT - {COD} / {DOAÇÃO}
+
+// HIO: ABO embutido na linha de dados (AB, B, A, O)
+const PDF_ANALITICO_HIO = `Estoque de Componentes - Analítico
+Emissão: 14/05/2026 12:26
+PULSA BH
+RUA JUIZ DE FORA, 941 - BARRO PRETO - BH
+TEL.: (31)3335-6600
+Fator RHGr. ABOInst. Colet.DoaçãoComp.Seq.ValidadeLavadoRefrac.Deleuc.Irrad.Loc. Armazenamento
+Componente: NA VALIDADE - Validade: NA VALIDADE
+CDE
+ABVITAPCH   116/05/2026 23:59NÃONÃONÃONÃO
+AT - HIO
+26010489
+BVITAPCH   118/05/2026 23:59NÃONÃONÃONÃO
+AT - HIO
+26010553
+AVITAPCH   119/05/2026 23:59NÃONÃONÃONÃO
+AT - HIO
+26010606
+OVITANCP   116/05/2026 23:59NÃONÃONÃOSIM
+AT - HIO
+26010490
+`;
+
+// HBH: ABO "AB" aparece isolado antes do primeiro AT (edge case)
+const PDF_ANALITICO_HBH = `Estoque de Componentes - Analítico
+001
+AB
+Total : 1
+Emissão: 14/05/2026 12:27
+PULSA BH
+RUA JUIZ DE FORA, 941 - BARRO PRETO - BH
+TEL.: (31)3335-6600
+VITAPCH   119/05/2026 23:59NÃONÃONÃONÃO
+AT - HBH
+Fator RHGr. ABOInst. Colet.DoaçãoComp.Seq.ValidadeLavadoRefrac.Deleuc.Irrad.Loc. Armazenamento
+26010592
+`;
+
+// HUC: variação com ABO "B" e componente CP
+const PDF_ANALITICO_HUC = `Estoque de Componentes - Analítico
+Emissão: 14/05/2026 12:28
+PULSA BH
+CDE
+BVITAPCP   114/05/2026 23:59NÃONÃONÃONÃO
+AT - HUC
+26013719
+BVITAPCP   114/05/2026 23:59NÃONÃONÃONÃO
+AT - HUC
+26013750
+`;
+
+describe("parsearArquivo — PDF formato Analítico (HIO/HUC/HBH)", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  test("HIO: extrai 4 bolsas com ABO embutido na linha de dados", async () => {
+    mockPdfParse.mockResolvedValue({ text: PDF_ANALITICO_HIO });
+    const { bolsas, dataEmissao, codigoAgencia } = await parsearArquivo(Buffer.from("dummy"), "14052026HIO.PDF");
+
+    expect(bolsas).toHaveLength(4);
+    expect(bolsas[0]).toMatchObject({ doacao: "26010489", componente: "CH", abo: "AB", fatorRh: "P", validade: "2026-05-16", instituicao: "VITA" });
+    expect(bolsas[1]).toMatchObject({ doacao: "26010553", componente: "CH", abo: "B",  fatorRh: "P", validade: "2026-05-18" });
+    expect(bolsas[2]).toMatchObject({ doacao: "26010606", componente: "CH", abo: "A",  fatorRh: "P", validade: "2026-05-19" });
+    expect(bolsas[3]).toMatchObject({ doacao: "26010490", componente: "CP", abo: "O",  fatorRh: "N", validade: "2026-05-16" });
+    expect(codigoAgencia).toBe("HIO");
+    expect(dataEmissao).toBe("2026-05-14");
+  });
+
+  test("HBH: extrai 1 bolsa com ABO isolado antes do primeiro AT", async () => {
+    mockPdfParse.mockResolvedValue({ text: PDF_ANALITICO_HBH });
+    const { bolsas, codigoAgencia } = await parsearArquivo(Buffer.from("dummy"), "14052026HBH.PDF");
+
+    expect(bolsas).toHaveLength(1);
+    expect(bolsas[0]).toMatchObject({ doacao: "26010592", componente: "CH", abo: "AB", fatorRh: "P", validade: "2026-05-19", instituicao: "VITA" });
+    expect(codigoAgencia).toBe("HBH");
+  });
+
+  test("HUC: extrai 2 bolsas repetidas com componente CP e fator P", async () => {
+    mockPdfParse.mockResolvedValue({ text: PDF_ANALITICO_HUC });
+    const { bolsas, codigoAgencia } = await parsearArquivo(Buffer.from("dummy"), "14052026HUC.PDF");
+
+    expect(bolsas).toHaveLength(2);
+    expect(bolsas[0]).toMatchObject({ doacao: "26013719", componente: "CP", abo: "B", fatorRh: "P", validade: "2026-05-14" });
+    expect(bolsas[1]).toMatchObject({ doacao: "26013750", componente: "CP", abo: "B", fatorRh: "P" });
+    expect(codigoAgencia).toBe("HUC");
+  });
+
+  test("não interfere com formato padrão de linha quando não é Analítico", async () => {
+    mockPdfParse.mockResolvedValue({ text: PDF_VALIDO });
+    const { bolsas } = await parsearArquivo(Buffer.from("dummy"), "08052026HMT.PDF");
+    expect(bolsas).toHaveLength(5);
+    expect(bolsas[0].doacao).toBe("26010111");
+  });
+});
+
 // ── Testes: formato inválido ──────────────────────────────────────────────────
 
 describe("parsearArquivo — formato inválido", () => {

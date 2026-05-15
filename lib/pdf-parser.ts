@@ -236,6 +236,84 @@ function parsearPDFColunar(linhas: string[], N: number, dataEmissao: string | nu
   return { bolsas, dataEmissao, codigoAgencia };
 }
 
+// ── Parser modo Analítico ("Estoque de Componentes - Analítico") ─────────────
+// Cada registro ocupa 3 linhas:
+//   N:   {ABO}{INST}{FATOR}{COMP}   {SEQ}{DD/MM/YYYY HH:MM}NÃO...
+//   N+1: AT - {CODIGO}
+//   N+2: {7-9 dígitos de doação}
+// Exceção (HBH): ABO aparece em linha isolada antes do primeiro AT.
+
+function parseAnalyticPrefix(prefix: string): { abo: string; inst: string; fatorRh: string; componente: string } | null {
+  let abo = "";
+  let rest = prefix;
+  if (rest.startsWith("AB")) { abo = "AB"; rest = rest.slice(2); }
+  else if (/^[ABO]/.test(rest)) { abo = rest[0]; rest = rest.slice(1); }
+  else return null;
+
+  // Scan direita→esquerda: primeiro [PN] seguido de 2-5 letras maiúsculas é FATOR+COMP
+  for (let j = rest.length - 1; j >= 1; j--) {
+    if (!/[PN]/.test(rest[j])) continue;
+    const comp = rest.slice(j + 1);
+    const inst = rest.slice(0, j);
+    if (comp.length >= 2 && comp.length <= 5 && /^[A-Z]+$/.test(comp) && inst.length >= 2) {
+      return { abo, inst, fatorRh: rest[j], componente: comp };
+    }
+  }
+  return null;
+}
+
+function parsearAnalitico(linhas: string[], dataEmissao: string | null): ParseResult {
+  // ABO isolado antes do primeiro AT (edge case HBH)
+  let globalAbo: string | null = null;
+  for (const linha of linhas) {
+    if (/^AT\s*-\s/i.test(linha)) break;
+    const up = linha.trim().toUpperCase();
+    if (ABO_VALIDOS.has(up)) { globalAbo = up; break; }
+  }
+
+  let codigoAgencia: string | null = null;
+  const bolsas: BolsaParsed[] = [];
+
+  for (let i = 0; i < linhas.length; i++) {
+    const atMatch = linhas[i].match(/^AT\s*-\s*([A-Z0-9]+)$/i);
+    if (!atMatch) continue;
+
+    const atCode = atMatch[1].toUpperCase();
+    if (!codigoAgencia) codigoAgencia = atCode;
+
+    if (i === 0) continue;
+    const dataLine = linhas[i - 1];
+    const dateMatch = dataLine.match(DATE_TIME_RE);
+    if (!dateMatch) continue;
+
+    const [d, m, y] = dateMatch[1].split("/");
+    const validade = `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+
+    const prefixRaw = dataLine.slice(0, dataLine.indexOf(dateMatch[0])).replace(/\s*\d+$/, "").trim();
+
+    let parsed = parseAnalyticPrefix(prefixRaw);
+    if (!parsed && globalAbo) parsed = parseAnalyticPrefix(globalAbo + prefixRaw);
+    if (!parsed) continue;
+
+    let doacao = "?";
+    for (let j = i + 1; j <= Math.min(i + 4, linhas.length - 1); j++) {
+      if (/^\d{7,9}$/.test(linhas[j])) { doacao = linhas[j]; break; }
+    }
+
+    bolsas.push({
+      instituicao: parsed.inst,
+      doacao,
+      componente: parsed.componente,
+      validade,
+      abo: parsed.abo,
+      fatorRh: normalizarFatorRh(parsed.fatorRh),
+      urgencia: classificarUrgencia(validade),
+    });
+  }
+
+  return { bolsas, dataEmissao, codigoAgencia };
+}
+
 // ── Ponto de entrada ──────────────────────────────────────────────────────────
 
 export async function parsearPDF(buffer: Buffer): Promise<ParseResult> {
@@ -247,6 +325,11 @@ export async function parsearPDF(buffer: Buffer): Promise<ParseResult> {
   if (emissaoMatch) {
     const [, d, m, y] = emissaoMatch;
     dataEmissao = `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+
+  // Formato Analítico: 3 linhas por registro, detectado pelo cabeçalho
+  if (data.text.includes("Estoque de Componentes - Anal")) {
+    return parsearAnalitico(linhas, dataEmissao);
   }
 
   // Tenta modo linha primeiro

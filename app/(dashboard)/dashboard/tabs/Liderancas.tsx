@@ -304,28 +304,42 @@ export default function Liderancas({ liderancas, bolsas, perfil }: Props) {
 
               {/* Agency chips */}
               <div className="flex flex-wrap gap-1.5 mb-3">
-                {l.agencias.map((ag) => (
-                  <Badge
-                    key={ag.id}
-                    variant={
-                      ag.status === "processado" ? "processado"
-                      : ag.status === "erro" ? "erro"
-                      : "sem_arquivo"
-                    }
-                    title={`${ag.nome} — ${ag.totalBolsas} bolsas`}
-                    className="cursor-default text-[11px] gap-1"
-                  >
-                    <span className={`w-1.5 h-1.5 rounded-full ${
-                      ag.status === "processado" ? "bg-green-500"
-                      : ag.status === "erro" ? "bg-red-500"
-                      : "bg-slate-400"
-                    }`} />
-                    {ag.codigo}
-                    {ag.status === "processado" && ag.totalBolsas > 0 && (
-                      <span className="opacity-60">({ag.totalBolsas})</span>
-                    )}
-                  </Badge>
-                ))}
+                {l.agencias.map((ag) => {
+                  const vazioAgencia = ag.status === "processado" && ag.totalBolsas === 0;
+                  return (
+                    <Badge
+                      key={ag.id}
+                      variant={
+                        vazioAgencia ? "arquivo_vazio"
+                        : ag.status === "processado" ? "processado"
+                        : ag.status === "erro" ? "erro"
+                        : "sem_arquivo"
+                      }
+                      title={
+                        vazioAgencia
+                          ? `${ag.nome} — arquivo enviado mas sem bolsas`
+                          : `${ag.nome} — ${ag.totalBolsas} bolsas`
+                      }
+                      className="cursor-default text-[11px] gap-1"
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full ${
+                        vazioAgencia ? "bg-amber-500"
+                        : ag.status === "processado" ? "bg-green-500"
+                        : ag.status === "erro" ? "bg-red-500"
+                        : "bg-slate-400"
+                      }`} />
+                      {ag.codigo}
+                      {vazioAgencia && (
+                        <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                        </svg>
+                      )}
+                      {ag.status === "processado" && ag.totalBolsas > 0 && (
+                        <span className="opacity-60">({ag.totalBolsas})</span>
+                      )}
+                    </Badge>
+                  );
+                })}
               </div>
 
             </div>
