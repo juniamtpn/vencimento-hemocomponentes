@@ -538,6 +538,179 @@ describe("parsearArquivo — PDF formato Analítico (HIO/HUC/HBH)", () => {
   });
 });
 
+// ── Testes: PDF colunar com data colada no "AT - XXX" ────────────────────────
+// Reproduz 15072026HLC.PDF / 15072026HFR.PDF (15/07/2026): o pdf-parse emitiu a
+// última data da coluna colada ao primeiro token da coluna seguinte
+// ("15/07/2026 23:59AT - HLC"). Como os padrões de data e de AT são ancorados,
+// a linha não casava com nenhum dos dois: datas e ATs ficavam em 3 contra N=4 e
+// a guarda descartava as 4 bolsas silenciosamente.
+
+const PDF_COLUNAR_DATA_COLADA_AT = `001
+Emissão: 15/07/2026 08:59
+Bolsas vencidas e próximas ao vencimento
+PULSA BH
+Loc. Arm.ABOFator RhDoaçãoComp.Seq.ValidadeInstituição
+Total =>
+4
+26020430
+26022799
+26018853
+26020334
+CP
+CP
+CP
+CP  1
+1
+1
+1
+15/07/2026 23:59
+16/07/2026 23:59
+16/07/2026 23:59
+15/07/2026 23:59AT - HLC
+AT - HLC
+AT - HLC
+AT - HLCO
+B
+B
+OP
+P
+P
+P
+Bolsas Vencidas
+Legenda :
+VITA
+`;
+
+// Reproduz 15072026HSL.PDF: duas seções ("Vencidas" e "Próximas") intercaladas
+// deixam a instituição VITA antes da primeira data (vira "componente") e fundem
+// doação+componente ("26019098CH"). As colunas não têm N entradas cada.
+const PDF_COLUNAR_DESALINHADO = `VITA
+VITA
+VITA
+VITA
+001
+Emissão: 15/07/2026 08:37
+PULSA BH
+26002420
+26002411
+CH
+CH  1
+105/03/2026 23:59
+05/03/2026 23:59
+AT - HSL
+AT - HSL
+O
+ON
+N
+Loc. Arm.ABOFator RhDoaçãoComp.Seq.ValidadeInstituição
+Total =>
+4
+26016874
+26019098CH
+CH  1
+1
+22/07/2026 23:59
+22/07/2026 23:59AT - HSL
+AT - HSLA
+ABP
+P
+Legenda :
+`;
+
+describe("parsearArquivo — PDF colunar com data colada no AT", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  test("separa data colada no 'AT - XXX' e extrai as 4 bolsas", async () => {
+    mockPdfParse.mockResolvedValue({ text: PDF_COLUNAR_DATA_COLADA_AT });
+    const { bolsas, codigoAgencia, dataEmissao } = await parsearArquivo(
+      Buffer.from("dummy"), "15072026HLC.PDF", "HLC"
+    );
+
+    expect(bolsas).toHaveLength(4);
+    expect(codigoAgencia).toBe("HLC");
+    expect(dataEmissao).toBe("2026-07-15");
+    // Componente real (CP), não a instituição
+    expect(bolsas.every((b) => b.componente === "CP")).toBe(true);
+    expect(bolsas.every((b) => b.instituicao === "VITA")).toBe(true);
+    expect(bolsas[0]).toMatchObject({ doacao: "26020430", validade: "2026-07-15" });
+    // A data colada é a 4ª da coluna e o AT correspondente é o 1º
+    expect(bolsas.map((b) => b.validade)).toEqual([
+      "2026-07-15", "2026-07-16", "2026-07-16", "2026-07-15",
+    ]);
+  });
+
+  test("colunas desalinhadas retornam 0 bolsas em vez de dados incorretos", async () => {
+    mockPdfParse.mockResolvedValue({ text: PDF_COLUNAR_DESALINHADO });
+    const { bolsas } = await parsearArquivo(Buffer.from("dummy"), "15072026HSL.PDF", "HSL");
+
+    // Sem a guarda, o zip por índice produziria componente "VITA" e doação "?".
+    expect(bolsas).toHaveLength(0);
+  });
+});
+
+// ── Testes: desambiguação do código AT pelo código esperado ───────────────────
+// Reproduz 15072026HMON.PDF: "AT - HMONOPB3097" admite duas separações válidas —
+// HM+O+N+OPB3097 e HMON+O+P+B3097. O quantificador preguiçoso escolhia a
+// primeira, corrompendo o fator Rh (N em vez de P) e fazendo a rotina rejeitar o
+// arquivo por "agencia_incorreta" (HM ≠ HMON).
+
+const PDF_AT_AMBIGUO_HMON = `Emissão: 15/07/2026 08:09
+PULSA BH
+Loc. Arm.ABOFator RhDoaçãoComp.Seq.ValidadeInstituição
+Legenda :
+26019000CP  116/07/2026 23:59AT - HMONOPB3097
+26019003CP  116/07/2026 23:59AT - HMONAPB3097
+Total =>
+2
+001
+`;
+
+describe("parsearArquivo — desambiguação do código AT mesclado", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  test("usa o código esperado para separar 'HMONOPB3097' como HMON+O+P", async () => {
+    mockPdfParse.mockResolvedValue({ text: PDF_AT_AMBIGUO_HMON });
+    const { bolsas, codigoAgencia } = await parsearArquivo(
+      Buffer.from("dummy"), "15072026HMON.PDF", "HMON"
+    );
+
+    expect(codigoAgencia).toBe("HMON");
+    expect(bolsas).toHaveLength(2);
+    expect(bolsas[0]).toMatchObject({
+      doacao: "26019000", componente: "CP", abo: "O", fatorRh: "P", instituicao: "B3097",
+    });
+    expect(bolsas[1]).toMatchObject({ abo: "A", fatorRh: "P", instituicao: "B3097" });
+  });
+
+  test("sem código esperado, mantém a menor extensão de código (comportamento histórico)", async () => {
+    mockPdfParse.mockResolvedValue({ text: PDF_AT_AMBIGUO_HMON });
+    const { codigoAgencia, bolsas } = await parsearArquivo(Buffer.from("dummy"), "15072026HMON.PDF");
+
+    expect(codigoAgencia).toBe("HM");
+    expect(bolsas[0]).toMatchObject({ abo: "O", fatorRh: "N", instituicao: "OPB3097" });
+  });
+
+  test("código esperado não quebra 'HSCUABP' (ABO=AB continua sendo HSCU+AB+P)", async () => {
+    mockPdfParse.mockResolvedValue({ text: PDF_COMPACTO_ABO_AB });
+    const { bolsas, codigoAgencia } = await parsearArquivo(
+      Buffer.from("dummy"), "14052026HSCU.PDF", "HSCU"
+    );
+
+    expect(codigoAgencia).toBe("HSCU");
+    expect(bolsas[0]).toMatchObject({ abo: "AB", fatorRh: "P" });
+  });
+
+  test("código esperado que não corresponde a nenhuma separação usa o fallback", async () => {
+    mockPdfParse.mockResolvedValue({ text: PDF_COMPACTO_PADRAO_A });
+    const { codigoAgencia, bolsas } = await parsearArquivo(
+      Buffer.from("dummy"), "14052026HSR.PDF", "XXXX"
+    );
+
+    expect(codigoAgencia).toBe("HSR");
+    expect(bolsas).toHaveLength(7);
+  });
+});
+
 // ── Testes: formato inválido ──────────────────────────────────────────────────
 
 describe("parsearArquivo — formato inválido", () => {

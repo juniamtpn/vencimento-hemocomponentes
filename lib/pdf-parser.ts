@@ -10,19 +10,53 @@ const ABO_VALIDOS = new Set(["A", "B", "O", "AB"]);
 // Ex: "26013876CP", "26704764IPPA", "25012884CRI"
 const MERGED_DOACAO_COMP_RE = /^(\d{7,9})([A-Z][A-Z0-9]{1,4})$/;
 
+interface AtMerge {
+  code: string;
+  abo: string;
+  fator: string;
+  inst: string | null;
+}
+
+// Enumera todas as separações válidas de código AT + ABO + Fator Rh + instituição,
+// da menor para a maior extensão de código.
+function enumerarAtMerges(s: string): AtMerge[] {
+  const out: AtMerge[] = [];
+  for (let i = 1; i < s.length; i++) {
+    const code = s.slice(0, i);
+    if (!/^[A-Z0-9]+$/.test(code)) continue;
+    const m = s.slice(i).match(/^(AB|[ABO])([PN])([A-Z][A-Z0-9]*)?$/);
+    if (m) out.push({ code, abo: m[1], fator: m[2], inst: m[3] ?? null });
+  }
+  return out;
+}
+
 // Separa o código AT de ABO + Fator Rh (e opcionalmente instituição) mesclados.
 // Ex: "HSRAPVITA" → { code:"HSR", abo:"A", fator:"P", inst:"VITA" }
 //     "HSCUABP"  → { code:"HSCU", abo:"AB", fator:"P", inst:null }
 //     "HLOP"     → { code:"HL",   abo:"O",  fator:"P", inst:null }
-function parsearAtMerge(s: string): { code: string; abo: string; fator: string; inst: string | null } | null {
-  const m = s.match(/^([A-Z0-9]+?)(AB|[ABO])([PN])([A-Z][A-Z0-9]*)?$/);
-  if (!m) return null;
-  return { code: m[1], abo: m[2], fator: m[3], inst: m[4] ?? null };
+//
+// A separação é ambígua: "HMONOPB3097" admite HM+O+N+OPB3097 e HMON+O+P+B3097.
+// Quando o código esperado da agência é conhecido, ele desempata; senão mantém-se
+// a menor extensão de código (comportamento histórico).
+function parsearAtMerge(s: string, codigoEsperado?: string): AtMerge | null {
+  const candidatos = enumerarAtMerges(s);
+  if (candidatos.length === 0) return null;
+
+  if (codigoEsperado) {
+    const alvo = codigoEsperado.toUpperCase();
+    const exato = candidatos.find((c) => c.code === alvo);
+    if (exato) return exato;
+  }
+
+  return candidatos[0];
 }
 
 // ── Parser modo linha (um registro completo por linha) ────────────────────────
 
-function parsearLinhaPDF(linha: string): { bolsa: BolsaParsed; locArm: string | null } | null {
+function parsearLinhaPDF(
+  linha: string,
+  codigoEsperado?: string
+): { bolsa: BolsaParsed; locArm: string | null } | null {
   const match = linha.match(DATE_TIME_RE);
   if (!match) return null;
 
@@ -53,7 +87,7 @@ function parsearLinhaPDF(linha: string): { bolsa: BolsaParsed; locArm: string | 
 
     const atm = depoisData.match(/^AT\s*-\s*([A-Z0-9]+)/i);
     if (!atm) return null;
-    const parsed = parsearAtMerge(atm[1].toUpperCase());
+    const parsed = parsearAtMerge(atm[1].toUpperCase(), codigoEsperado);
     if (!parsed || !ABO_VALIDOS.has(parsed.abo)) return null;
 
     return {
@@ -103,8 +137,30 @@ function parsearLinhaPDF(linha: string): { bolsa: BolsaParsed; locArm: string | 
 // Ocorre quando o PDF é gerado com colunas independentes.
 // Cada grupo de N linhas consecutivas representa os N valores de uma coluna.
 
-function parsearPDFColunar(linhas: string[], N: number, dataEmissao: string | null): ParseResult {
+// pdf-parse ocasionalmente emite a última data de uma coluna colada ao primeiro
+// token da coluna seguinte: "15/07/2026 23:59AT - HLC". Como os padrões de data e
+// de AT são ancorados, a linha não casa com nenhum dos dois e o registro some.
+// Separar antes do laço mantém toda a lógica seguinte (inclusive ABO colado no AT).
+const DATE_AT_MERGED_RE = /^(\d{1,4}\/\d{2}\/\d{4}\s+\d{2}:\d{2})(AT\s*-\s*[A-Z0-9]+)$/i;
+
+function separarDataDeAt(linhas: string[]): string[] {
+  const out: string[] = [];
+  for (const l of linhas) {
+    const m = l.match(DATE_AT_MERGED_RE);
+    if (m) {
+      out.push(m[1].trim());
+      out.push(m[2].trim());
+    } else {
+      out.push(l);
+    }
+  }
+  return out;
+}
+
+function parsearPDFColunar(linhasBrutas: string[], N: number, dataEmissao: string | null): ParseResult {
   if (N <= 0) return { bolsas: [], dataEmissao, codigoAgencia: null };
+
+  const linhas = separarDataDeAt(linhasBrutas);
 
   const firstDateIdx = linhas.findIndex(l => /^\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}$/.test(l));
   let lastAtIdx = -1;
@@ -197,8 +253,20 @@ function parsearPDFColunar(linhas: string[], N: number, dataEmissao: string | nu
     }
   }
 
-  // Precisa de exatamente N entradas AT, N datas e N fatores
-  if (atEntries.length !== N || datas.length !== N || fatores.length !== N) {
+  // As colunas são reunidas por índice, então a reconstrução só é confiável se
+  // TODAS tiverem exatamente N entradas. Basta uma coluna desalinhada — p.ex. um
+  // relatório com as seções "Vencidas" e "Próximas" intercaladas, onde a
+  // instituição aparece antes da primeira data e é confundida com componente —
+  // para que o zip associe componente/doação à bolsa errada. Diante de dados de
+  // hemocomponente, falhar de forma visível (0 bolsas → alerta de arquivo vazio)
+  // é preferível a emitir tipagem ou componente incorretos.
+  if (
+    atEntries.length !== N ||
+    datas.length !== N ||
+    fatores.length !== N ||
+    doacoes.length !== N ||
+    componentes.length !== N
+  ) {
     return { bolsas: [], dataEmissao, codigoAgencia: null };
   }
 
@@ -316,7 +384,7 @@ function parsearAnalitico(linhas: string[], dataEmissao: string | null): ParseRe
 
 // ── Ponto de entrada ──────────────────────────────────────────────────────────
 
-export async function parsearPDF(buffer: Buffer): Promise<ParseResult> {
+export async function parsearPDF(buffer: Buffer, codigoEsperado?: string): Promise<ParseResult> {
   const data = await pdfParse(buffer);
   const linhas = data.text.split("\n").map((l) => l.trim()).filter(Boolean);
 
@@ -337,7 +405,7 @@ export async function parsearPDF(buffer: Buffer): Promise<ParseResult> {
   const codigoContagem = new Map<string, number>();
 
   for (const linha of linhas) {
-    const result = parsearLinhaPDF(linha);
+    const result = parsearLinhaPDF(linha, codigoEsperado);
     if (result) {
       bolsas.push(result.bolsa);
       if (result.locArm) {

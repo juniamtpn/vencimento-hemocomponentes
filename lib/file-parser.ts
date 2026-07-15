@@ -6,7 +6,8 @@ export type { BolsaParsed, ParseResult };
 
 export async function parsearArquivo(
   buffer: Buffer,
-  nomeArquivo: string
+  nomeArquivo: string,
+  codigoEsperado?: string
 ): Promise<ParseResult> {
   const ext = nomeArquivo.split(".").pop()?.toLowerCase() ?? "";
 
@@ -21,7 +22,7 @@ export async function parsearArquivo(
     let result: ParseResult;
 
     if (ext === "pdf") {
-      result = await parsearPDF(buffer);
+      result = await parsearPDF(buffer, codigoEsperado);
     } else if (ext === "xlsx" || ext === "xls") {
       result = parsearPlanilha(buffer);
     } else {
