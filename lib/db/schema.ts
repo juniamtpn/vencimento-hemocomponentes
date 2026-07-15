@@ -44,6 +44,11 @@ export const registrosDiarios = sqliteTable("registros_diarios", {
   })
     .notNull()
     .default("processado"),
+  // Por que o arquivo foi recusado. Só preenchido quando status = "erro";
+  // permite o painel explicar a causa em vez de só sinalizar que falhou.
+  motivoErro: text("motivo_erro", {
+    enum: ["sem_texto", "data_invalida", "agencia_incorreta", "total_divergente"],
+  }),
   tipoEnvio: text("tipo_envio", { enum: ["automatico", "manual"] })
     .notNull()
     .default("automatico"),

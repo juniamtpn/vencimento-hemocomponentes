@@ -83,6 +83,7 @@ export default async function DashboardPage() {
       liderancaNome: responsavelPorAgencia.get(ag.id)?.nome ?? "—",
       liderancaTelefone: responsavelPorAgencia.get(ag.id)?.telefone ?? null,
       status: (reg?.status ?? "sem_arquivo") as AgenciaStatus["status"],
+      motivoErro: (reg?.motivoErro ?? null) as AgenciaStatus["motivoErro"],
       totalBolsas: reg?.totalBolsas ?? 0,
       arquivoNome: reg?.arquivoNome ?? null,
       tipoEnvio: (reg?.tipoEnvio ?? null) as AgenciaStatus["tipoEnvio"],

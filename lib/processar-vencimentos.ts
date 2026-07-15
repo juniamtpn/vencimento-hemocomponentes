@@ -132,6 +132,7 @@ export async function processarVencimentos(triggeredBy: "cron" | "manual" = "cro
           totalBolsas: 0,
           arquivoNome: arquivo!.nome,
           status: "erro",
+          motivoErro: motivo,
         });
 
         const email = emailPorAgencia.get(agencia.id);

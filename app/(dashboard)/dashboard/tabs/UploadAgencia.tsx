@@ -3,7 +3,8 @@
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import type { AgenciaStatus } from "../types";
+import type { AgenciaStatus, MotivoErro } from "../types";
+import { MOTIVO_ERRO_TEXTO } from "../types";
 import { Badge } from "@/components/ui/badge";
 
 interface Props {
@@ -162,11 +163,14 @@ export default function UploadAgencia({ agencias, dataHoje }: Props) {
             <tbody className="divide-y divide-slate-100">
               {agencias.map((ag) => {
                 const arquivoVazioRow = ag.status === "processado" && ag.totalBolsas === 0;
+                const erroRow = ag.status === "erro";
                 return (
                 <tr
                   key={ag.id}
                   className={`transition-colors ${
-                    arquivoVazioRow
+                    erroRow
+                      ? "bg-red-50/50 hover:bg-red-50/80"
+                      : arquivoVazioRow
                       ? "bg-amber-50/50 hover:bg-amber-50/80"
                       : ag.tipoEnvio === "manual"
                       ? "bg-amber-50/30 hover:bg-amber-50/60"
@@ -192,6 +196,13 @@ export default function UploadAgencia({ agencias, dataHoje }: Props) {
                       </span>
                     ) : (
                       <span className="text-slate-300 text-xs">—</span>
+                    )}
+                    {/* O motivo fica visível na linha: quem olha o painel precisa
+                        saber o que fazer sem depender do e-mail ao responsável. */}
+                    {ag.status === "erro" && ag.motivoErro && (
+                      <p className="text-red-600 text-[11px] leading-snug mt-1 max-w-[260px]">
+                        {MOTIVO_ERRO_TEXTO[ag.motivoErro].explicacao}
+                      </p>
                     )}
                   </td>
 
@@ -220,7 +231,7 @@ export default function UploadAgencia({ agencias, dataHoje }: Props) {
 
                   {/* Status */}
                   <td className="px-4 py-3">
-                    <StatusBadge status={ag.status} totalBolsas={ag.totalBolsas} />
+                    <StatusBadge status={ag.status} totalBolsas={ag.totalBolsas} motivoErro={ag.motivoErro} />
                   </td>
                 </tr>
                 );
@@ -380,7 +391,15 @@ function EnvioCell({ ag }: { ag: AgenciaStatus }) {
   );
 }
 
-function StatusBadge({ status, totalBolsas }: { status: string; totalBolsas: number }) {
+function StatusBadge({
+  status,
+  totalBolsas,
+  motivoErro,
+}: {
+  status: string;
+  totalBolsas: number;
+  motivoErro: MotivoErro | null;
+}) {
   if (status === "processado" && totalBolsas === 0) {
     return (
       <Badge variant="arquivo_vazio" className="gap-1.5 whitespace-nowrap">
@@ -398,10 +417,15 @@ function StatusBadge({ status, totalBolsas }: { status: string; totalBolsas: num
     );
   }
   if (status === "erro") {
+    const texto = motivoErro ? MOTIVO_ERRO_TEXTO[motivoErro] : null;
     return (
-      <Badge variant="erro" className="gap-1.5">
-        <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-        Erro
+      <Badge
+        variant="erro"
+        className="gap-1.5 whitespace-nowrap"
+        title={texto?.explicacao}
+      >
+        <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+        {texto?.rotulo ?? "Erro"}
       </Badge>
     );
   }
