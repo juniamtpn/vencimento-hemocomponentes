@@ -51,32 +51,43 @@ function bufferXLSFormatoReal(dataRows: unknown[][]): Buffer {
   return XLSX.write(wb, { type: "buffer", bookType: "xls" });
 }
 
-// Formato real do PDF conforme o arquivo 08052026HMT.PDF
-const PDF_VALIDO = `
-Emissão: 08/05/2026 09:15
-Bolsas vencidas e próximas ao vencimento
-PULSA BH
+/**
+ * O parser de PDF lê posições, não texto corrido: instala um `pagerender` que
+ * devolve os fragmentos com X/Y, e reagrupa em linhas por Y. Este helper monta
+ * esse retorno a partir de linhas de células, atribuindo X crescente por coluna
+ * e Y decrescente por linha — como o pdf.js entrega numa página real.
+ *
+ * pdf-parse concatena o retorno de cada página com "\n\n" (inclusive no início).
+ */
+function pdfPosicional(linhas: string[][]): string {
+  const itens = linhas.flatMap((celulas, iLinha) =>
+    celulas.map((s, iCol) => ({ s, x: 50 + iCol * 70, y: 700 - iLinha * 15 }))
+  );
+  return "\n\n" + JSON.stringify(itens);
+}
 
-Legenda :
-Bolsas Vencidas
-Bolsas próximas ao vencimento
+// Layout compacto real (15072026HMT.PDF e similares).
+const PDF_VALIDO = pdfPosicional([
+  ["PULSA BH", "Emissão: 08/05/2026 09:15"],
+  ["Bolsas vencidas e próximas ao vencimento"],
+  ["Legenda :"],
+  ["Bolsas Vencidas"],
+  ["Bolsas próximas ao vencimento"],
+  ["Instituição", "Doação", "Comp.", "Seq.", "Validade", "Loc. Arm.", "ABO", "Fator Rh"],
+  ["B3087", "26010111", "CH", "1", "12/05/2026 23:59", "AT - HMT", "B", "P"],
+  ["B3087", "26014090", "CP", "1", "09/05/2026 23:59", "AT - HMT", "O", "P"],
+  ["B3087", "26015279", "CP", "1", "10/05/2026 23:59", "AT - HMT", "O", "N"],
+  ["B3087", "26015323", "CP", "1", "09/05/2026 23:59", "AT - HMT", "A", "P"],
+  ["VITA", "26010119", "CH", "1", "11/05/2026 23:59", "AT - HMT", "B", "P"],
+  ["Total =>", "5"],
+]);
 
-Instituição Doação Comp. Seq. Validade Loc. Arm. ABO Fator Rh
-B3087 26010111 CH 1 12/05/2026 23:59 AT - HMT B P
-B3087 26014090 CP 1 09/05/2026 23:59 AT - HMT O P
-B3087 26015279 CP 1 10/05/2026 23:59 AT - HMT O N
-B3087 26015323 CP 1 09/05/2026 23:59 AT - HMT A P
-VITA 26010119 CH 1 11/05/2026 23:59 AT - HMT B P
-Total => 5
-`;
-
-const PDF_SEM_DADOS = `
-Emissão: 08/05/2026 09:15
-Bolsas vencidas e próximas ao vencimento
-PULSA BH
-Sem bolsas no período.
-Total => 0
-`;
+const PDF_SEM_DADOS = pdfPosicional([
+  ["PULSA BH", "Emissão: 08/05/2026 09:15"],
+  ["Bolsas vencidas e próximas ao vencimento"],
+  ["Sem bolsas no período."],
+  ["Total =>", "0"],
+]);
 
 // ── Testes: Excel (.xlsx) ────────────────────────────────────────────────────
 
@@ -195,12 +206,12 @@ describe("parsearArquivo — PDF (.pdf)", () => {
 
   test("linhas sem data-hora são ignoradas", async () => {
     mockPdfParse.mockResolvedValue({
-      text: `
-Bolsas próximas ao vencimento
-Isso é um cabeçalho
-B3087 26010111 CH 1 12/05/2026 23:59 AT - HMT B P
-Total => 1
-      `,
+      text: pdfPosicional([
+        ["Bolsas próximas ao vencimento"],
+        ["Isso é um cabeçalho"],
+        ["B3087", "26010111", "CH", "1", "12/05/2026 23:59", "AT - HMT", "B", "P"],
+        ["Total =>", "1"],
+      ]),
     });
     const { bolsas } = await parsearArquivo(Buffer.from("dummy"), "teste.pdf");
     expect(bolsas).toHaveLength(1);
@@ -214,14 +225,31 @@ Total => 1
 
   test("PDF com ABO inválido na linha é ignorado", async () => {
     mockPdfParse.mockResolvedValue({
-      text: `
-B3087 26010111 CH 1 12/05/2026 23:59 AT - HMT X P
-B3087 26014090 CP 1 09/05/2026 23:59 AT - HMT O N
-      `,
+      text: pdfPosicional([
+        ["B3087", "26010111", "CH", "1", "12/05/2026 23:59", "AT - HMT", "X", "P"],
+        ["B3087", "26014090", "CP", "1", "09/05/2026 23:59", "AT - HMT", "O", "N"],
+      ]),
     });
     const { bolsas } = await parsearArquivo(Buffer.from("dummy"), "abo.pdf");
     expect(bolsas).toHaveLength(1);
     expect(bolsas[0].abo).toBe("O");
+  });
+
+  test("expõe o total declarado pelo relatório", async () => {
+    mockPdfParse.mockResolvedValue({ text: PDF_VALIDO });
+    const { bolsas, totalDeclarado } = await parsearArquivo(Buffer.from("dummy"), "08052026HMT.PDF");
+    expect(totalDeclarado).toBe(5);
+    expect(bolsas).toHaveLength(5);
+  });
+
+  test("PDF sem camada de texto (escaneado) retorna vazio em vez de lançar", async () => {
+    // 15072026HDMU.PDF: o relatório foi digitalizado como imagem — o pdf.js não
+    // devolve nenhum fragmento de texto. Falhar visível é o comportamento correto.
+    mockPdfParse.mockResolvedValue({ text: "\n\n" });
+    const { bolsas, dataEmissao, totalDeclarado } = await parsearArquivo(Buffer.from("dummy"), "15072026HDMU.PDF");
+    expect(bolsas).toHaveLength(0);
+    expect(dataEmissao).toBeNull();
+    expect(totalDeclarado).toBeNull();
   });
 });
 
@@ -328,388 +356,150 @@ describe("parsearArquivo — Sentry captureMessage para arquivo vazio", () => {
   });
 });
 
-// ── Testes: PDF formato compacto (doação+comp mesclados, ABO+fator mesclados) ─
-// Reproduz o padrão dos arquivos HSR, HUB, HSCU, HSG, HS, HVC, HMDBC, HL.
-// Características:
-//   - Antes da data: "[DOACAO+COMP]  [SEQ]" (sem separação entre doação e comp)
-//   - Após a data: "AT - [CODIGO+ABO+FATOR+INST?]" (tudo mesclado)
+// ── Testes: layouts reais dos relatórios do HEMOTE ───────────────────────────
+// Reproduzem, célula a célula, as tabelas conferidas contra a imagem renderizada
+// dos PDFs de 15/07/2026. Os dois layouts em uso diferem no conjunto de colunas,
+// mas o parser localiza cada campo pelo conteúdo da célula, não por índice fixo.
 
-const PDF_COMPACTO_PADRAO_A = `
-Emissão: 14/05/2026 09:38
-Bolsas vencidas e próximas ao vencimento
-PULSA BH
-RUA JUIZ DE FORA, 941 - BARRO PRETO - BH
-TEL.: (31)3335-6600
-Loc. Arm.ABOFator RhDoaçãoComp.Seq.ValidadeInstituição
-Bolsas Vencidas
-Bolsas próximas ao vencimento
-Legenda :
-26013876CP  116/05/2026 23:59AT - HSRAPVITA
-26013881CP  116/05/2026 23:59AT - HSRAPVITA
-26013883CP  116/05/2026 23:59AT - HSRAPVITA
-26013890CP  116/05/2026 23:59AT - HSRAPVITA
-26013892CP  116/05/2026 23:59AT - HSRAPVITA
-26013895CP  116/05/2026 23:59AT - HSRAPVITA
-26013897CP  116/05/2026 23:59AT - HSRANVITA
-Total =>
-7
-001
-`;
-
-// Padrão B: instituição duplicada antes da doação (HL), mesclagem "HLOP" sem inst.
-const PDF_COMPACTO_PADRAO_B = `
-Emissão: 14/05/2026 08:35
-Bolsas vencidas e próximas ao vencimento
-PULSA BH
-Loc. Arm.ABOFator RhDoaçãoComp.Seq.ValidadeInstituição
-Bolsas Vencidas
-Bolsas próximas ao vencimento
-Legenda :
-B3013B3013   26704764IPPA  113/05/2026 23:59AT - HLOP
-26704846IPPA  114/05/2026 23:59AT - HLOPB3013
-26704875IPPA  115/05/2026 23:59AT - HLOPB3013
-Total =>
-3
-001
-`;
-
-// Padrão com ABO "AB" mesclado: "HSCUABP" = código HSCU + ABO AB + Fator P
-const PDF_COMPACTO_ABO_AB = `
-Emissão: 14/05/2026 09:38
-PULSA BH
-Loc. Arm.ABOFator RhDoaçãoComp.Seq.ValidadeInstituição
-26010525CH  118/05/2026 23:59AT - HSCUABP
-Total =>
-1
-001
-`;
-
-describe("parsearArquivo — PDF formato compacto (doação+comp+ABO+fator mesclados)", () => {
+describe("parsearArquivo — PDF layout compacto", () => {
   beforeEach(() => jest.clearAllMocks());
 
-  test("Padrão A: extrai 7 bolsas com doação+comp mesclados e ABO+fator mesclados no AT", async () => {
-    mockPdfParse.mockResolvedValue({ text: PDF_COMPACTO_PADRAO_A });
-    const { bolsas, dataEmissao, codigoAgencia } = await parsearArquivo(Buffer.from("dummy"), "14052026HSR.PDF");
-
-    expect(bolsas).toHaveLength(7);
-    expect(bolsas[0]).toMatchObject({
-      doacao: "26013876",
-      componente: "CP",
-      abo: "A",
-      fatorRh: "P",
-      validade: "2026-05-16",
+  // 15072026HLC.PDF — conferido contra a imagem: as duas primeiras bolsas vencem
+  // no dia da emissão e pertencem a instituições distintas (B3087 / B3097).
+  test("HLC: 4 bolsas, cada doação com sua data e instituição", async () => {
+    mockPdfParse.mockResolvedValue({
+      text: pdfPosicional([
+        ["PULSA BH", "Emissão: 15/07/2026 08:59"],
+        ["Instituição", "Doação", "Comp.", "Seq.", "Validade", "Loc. Arm.", "ABO", "Fator Rh"],
+        ["B3087", "26022799", "CP", "1", "15/07/2026 23:59", "AT - HLC", "B", "P"],
+        ["B3097", "26018853", "CP", "1", "15/07/2026 23:59", "AT - HLC", "O", "P"],
+        ["VITA", "26020334", "CP", "1", "16/07/2026 23:59", "AT - HLC", "B", "P"],
+        ["VITA", "26020430", "CP", "1", "16/07/2026 23:59", "AT - HLC", "O", "P"],
+        ["Total =>", "4"],
+      ]),
     });
-    // Última linha tem fator N (negativo)
-    expect(bolsas[6].fatorRh).toBe("N");
-    expect(bolsas[6].abo).toBe("A");
-    // Código da agência extraído do locArm
-    expect(codigoAgencia).toBe("HSR");
-    expect(dataEmissao).toBe("2026-05-14");
-  });
+    const { bolsas, codigoAgencia, dataEmissao, totalDeclarado } =
+      await parsearArquivo(Buffer.from("dummy"), "15072026HLC.PDF");
 
-  test("Padrão B: extrai 3 bolsas com instituição prefixada e inst no sufixo AT", async () => {
-    mockPdfParse.mockResolvedValue({ text: PDF_COMPACTO_PADRAO_B });
-    const { bolsas, codigoAgencia } = await parsearArquivo(Buffer.from("dummy"), "14052026HL.PDF");
-
-    expect(bolsas).toHaveLength(3);
-    expect(bolsas[0]).toMatchObject({ doacao: "26704764", componente: "IPPA", abo: "O", fatorRh: "P" });
-    expect(bolsas[1]).toMatchObject({ doacao: "26704846", componente: "IPPA", abo: "O", fatorRh: "P" });
-    expect(codigoAgencia).toBe("HL");
-  });
-
-  test("Padrão ABO=AB: extrai corretamente quando código AT termina em AB+fator", async () => {
-    mockPdfParse.mockResolvedValue({ text: PDF_COMPACTO_ABO_AB });
-    const { bolsas, codigoAgencia } = await parsearArquivo(Buffer.from("dummy"), "14052026HSCU.PDF");
-
-    expect(bolsas).toHaveLength(1);
-    expect(bolsas[0]).toMatchObject({
-      doacao: "26010525",
-      componente: "CH",
-      abo: "AB",
-      fatorRh: "P",
-    });
-    expect(codigoAgencia).toBe("HSCU");
-  });
-
-  test("não interfere com formato padrão de linha (INST DOACAO COMP DATA AT ABO FATOR)", async () => {
-    mockPdfParse.mockResolvedValue({ text: PDF_VALIDO });
-    const { bolsas } = await parsearArquivo(Buffer.from("dummy"), "08052026HMT.PDF");
-    expect(bolsas).toHaveLength(5);
-    expect(bolsas[0].instituicao).toBe("B3087");
-    expect(bolsas[0].doacao).toBe("26010111");
-  });
-});
-
-// ── Testes: PDF formato Analítico ("Estoque de Componentes - Analítico") ─────
-// Reproduz os arquivos HIO.PDF, HUC.PDF e HBH.PDF onde cada registro ocupa
-// 3 linhas: {ABO+INST+FATOR+COMP}{SEQ}{DATA} / AT - {COD} / {DOAÇÃO}
-
-// HIO: ABO embutido na linha de dados (AB, B, A, O)
-const PDF_ANALITICO_HIO = `Estoque de Componentes - Analítico
-Emissão: 14/05/2026 12:26
-PULSA BH
-RUA JUIZ DE FORA, 941 - BARRO PRETO - BH
-TEL.: (31)3335-6600
-Fator RHGr. ABOInst. Colet.DoaçãoComp.Seq.ValidadeLavadoRefrac.Deleuc.Irrad.Loc. Armazenamento
-Componente: NA VALIDADE - Validade: NA VALIDADE
-CDE
-ABVITAPCH   116/05/2026 23:59NÃONÃONÃONÃO
-AT - HIO
-26010489
-BVITAPCH   118/05/2026 23:59NÃONÃONÃONÃO
-AT - HIO
-26010553
-AVITAPCH   119/05/2026 23:59NÃONÃONÃONÃO
-AT - HIO
-26010606
-OVITANCP   116/05/2026 23:59NÃONÃONÃOSIM
-AT - HIO
-26010490
-`;
-
-// HBH: ABO "AB" aparece isolado antes do primeiro AT (edge case)
-const PDF_ANALITICO_HBH = `Estoque de Componentes - Analítico
-001
-AB
-Total : 1
-Emissão: 14/05/2026 12:27
-PULSA BH
-RUA JUIZ DE FORA, 941 - BARRO PRETO - BH
-TEL.: (31)3335-6600
-VITAPCH   119/05/2026 23:59NÃONÃONÃONÃO
-AT - HBH
-Fator RHGr. ABOInst. Colet.DoaçãoComp.Seq.ValidadeLavadoRefrac.Deleuc.Irrad.Loc. Armazenamento
-26010592
-`;
-
-// HUC: variação com ABO "B" e componente CP
-const PDF_ANALITICO_HUC = `Estoque de Componentes - Analítico
-Emissão: 14/05/2026 12:28
-PULSA BH
-CDE
-BVITAPCP   114/05/2026 23:59NÃONÃONÃONÃO
-AT - HUC
-26013719
-BVITAPCP   114/05/2026 23:59NÃONÃONÃONÃO
-AT - HUC
-26013750
-`;
-
-describe("parsearArquivo — PDF formato Analítico (HIO/HUC/HBH)", () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  test("HIO: extrai 4 bolsas com ABO embutido na linha de dados", async () => {
-    mockPdfParse.mockResolvedValue({ text: PDF_ANALITICO_HIO });
-    const { bolsas, dataEmissao, codigoAgencia } = await parsearArquivo(Buffer.from("dummy"), "14052026HIO.PDF");
-
-    expect(bolsas).toHaveLength(4);
-    expect(bolsas[0]).toMatchObject({ doacao: "26010489", componente: "CH", abo: "AB", fatorRh: "P", validade: "2026-05-16", instituicao: "VITA" });
-    expect(bolsas[1]).toMatchObject({ doacao: "26010553", componente: "CH", abo: "B",  fatorRh: "P", validade: "2026-05-18" });
-    expect(bolsas[2]).toMatchObject({ doacao: "26010606", componente: "CH", abo: "A",  fatorRh: "P", validade: "2026-05-19" });
-    expect(bolsas[3]).toMatchObject({ doacao: "26010490", componente: "CP", abo: "O",  fatorRh: "N", validade: "2026-05-16" });
-    expect(codigoAgencia).toBe("HIO");
-    expect(dataEmissao).toBe("2026-05-14");
-  });
-
-  test("HBH: extrai 1 bolsa com ABO isolado antes do primeiro AT", async () => {
-    mockPdfParse.mockResolvedValue({ text: PDF_ANALITICO_HBH });
-    const { bolsas, codigoAgencia } = await parsearArquivo(Buffer.from("dummy"), "14052026HBH.PDF");
-
-    expect(bolsas).toHaveLength(1);
-    expect(bolsas[0]).toMatchObject({ doacao: "26010592", componente: "CH", abo: "AB", fatorRh: "P", validade: "2026-05-19", instituicao: "VITA" });
-    expect(codigoAgencia).toBe("HBH");
-  });
-
-  test("HUC: extrai 2 bolsas repetidas com componente CP e fator P", async () => {
-    mockPdfParse.mockResolvedValue({ text: PDF_ANALITICO_HUC });
-    const { bolsas, codigoAgencia } = await parsearArquivo(Buffer.from("dummy"), "14052026HUC.PDF");
-
-    expect(bolsas).toHaveLength(2);
-    expect(bolsas[0]).toMatchObject({ doacao: "26013719", componente: "CP", abo: "B", fatorRh: "P", validade: "2026-05-14" });
-    expect(bolsas[1]).toMatchObject({ doacao: "26013750", componente: "CP", abo: "B", fatorRh: "P" });
-    expect(codigoAgencia).toBe("HUC");
-  });
-
-  test("não interfere com formato padrão de linha quando não é Analítico", async () => {
-    mockPdfParse.mockResolvedValue({ text: PDF_VALIDO });
-    const { bolsas } = await parsearArquivo(Buffer.from("dummy"), "08052026HMT.PDF");
-    expect(bolsas).toHaveLength(5);
-    expect(bolsas[0].doacao).toBe("26010111");
-  });
-});
-
-// ── Testes: PDF colunar com data colada no "AT - XXX" ────────────────────────
-// Reproduz 15072026HLC.PDF / 15072026HFR.PDF (15/07/2026): o pdf-parse emitiu a
-// última data da coluna colada ao primeiro token da coluna seguinte
-// ("15/07/2026 23:59AT - HLC"). Como os padrões de data e de AT são ancorados,
-// a linha não casava com nenhum dos dois: datas e ATs ficavam em 3 contra N=4 e
-// a guarda descartava as 4 bolsas silenciosamente.
-
-const PDF_COLUNAR_DATA_COLADA_AT = `001
-Emissão: 15/07/2026 08:59
-Bolsas vencidas e próximas ao vencimento
-PULSA BH
-Loc. Arm.ABOFator RhDoaçãoComp.Seq.ValidadeInstituição
-Total =>
-4
-26020430
-26022799
-26018853
-26020334
-CP
-CP
-CP
-CP  1
-1
-1
-1
-15/07/2026 23:59
-16/07/2026 23:59
-16/07/2026 23:59
-15/07/2026 23:59AT - HLC
-AT - HLC
-AT - HLC
-AT - HLCO
-B
-B
-OP
-P
-P
-P
-Bolsas Vencidas
-Legenda :
-VITA
-`;
-
-// Reproduz 15072026HSL.PDF: duas seções ("Vencidas" e "Próximas") intercaladas
-// deixam a instituição VITA antes da primeira data (vira "componente") e fundem
-// doação+componente ("26019098CH"). As colunas não têm N entradas cada.
-const PDF_COLUNAR_DESALINHADO = `VITA
-VITA
-VITA
-VITA
-001
-Emissão: 15/07/2026 08:37
-PULSA BH
-26002420
-26002411
-CH
-CH  1
-105/03/2026 23:59
-05/03/2026 23:59
-AT - HSL
-AT - HSL
-O
-ON
-N
-Loc. Arm.ABOFator RhDoaçãoComp.Seq.ValidadeInstituição
-Total =>
-4
-26016874
-26019098CH
-CH  1
-1
-22/07/2026 23:59
-22/07/2026 23:59AT - HSL
-AT - HSLA
-ABP
-P
-Legenda :
-`;
-
-describe("parsearArquivo — PDF colunar com data colada no AT", () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  test("separa data colada no 'AT - XXX' e extrai as 4 bolsas", async () => {
-    mockPdfParse.mockResolvedValue({ text: PDF_COLUNAR_DATA_COLADA_AT });
-    const { bolsas, codigoAgencia, dataEmissao } = await parsearArquivo(
-      Buffer.from("dummy"), "15072026HLC.PDF", "HLC"
-    );
-
-    expect(bolsas).toHaveLength(4);
     expect(codigoAgencia).toBe("HLC");
     expect(dataEmissao).toBe("2026-07-15");
-    // Componente real (CP), não a instituição
-    expect(bolsas.every((b) => b.componente === "CP")).toBe(true);
-    expect(bolsas.every((b) => b.instituicao === "VITA")).toBe(true);
-    expect(bolsas[0]).toMatchObject({ doacao: "26020430", validade: "2026-07-15" });
-    // A data colada é a 4ª da coluna e o AT correspondente é o 1º
-    expect(bolsas.map((b) => b.validade)).toEqual([
-      "2026-07-15", "2026-07-16", "2026-07-16", "2026-07-15",
-    ]);
+    expect(totalDeclarado).toBe(4);
+    expect(bolsas).toHaveLength(4);
+    expect(bolsas[0]).toMatchObject({
+      instituicao: "B3087", doacao: "26022799", componente: "CP", validade: "2026-07-15", abo: "B", fatorRh: "P",
+    });
+    expect(bolsas[1]).toMatchObject({ instituicao: "B3097", doacao: "26018853", abo: "O" });
+    expect(bolsas[3]).toMatchObject({ instituicao: "VITA", doacao: "26020430", validade: "2026-07-16" });
   });
 
-  test("colunas desalinhadas retornam 0 bolsas em vez de dados incorretos", async () => {
-    mockPdfParse.mockResolvedValue({ text: PDF_COLUNAR_DESALINHADO });
-    const { bolsas } = await parsearArquivo(Buffer.from("dummy"), "15072026HSL.PDF", "HSL");
+  // 15072026HSL.PDF — bolsas vencidas (vermelhas) e a vencer no mesmo relatório.
+  test("HSL: mantém as bolsas vencidas e a instituição de cada linha", async () => {
+    mockPdfParse.mockResolvedValue({
+      text: pdfPosicional([
+        ["PULSA BH", "Emissão: 15/07/2026 08:37"],
+        ["Instituição", "Doação", "Comp.", "Seq.", "Validade", "Loc. Arm.", "ABO", "Fator Rh"],
+        ["B3087", "26019098", "CH", "1", "22/07/2026 23:59", "AT - HSL", "AB", "P"],
+        ["VITA", "26002411", "CH", "1", "05/03/2026 23:59", "AT - HSL", "O", "N"],
+        ["VITA", "26002420", "CH", "1", "05/03/2026 23:59", "AT - HSL", "O", "N"],
+        ["VITA", "26016874", "CH", "1", "22/07/2026 23:59", "AT - HSL", "A", "P"],
+        ["Total =>", "4"],
+      ]),
+    });
+    const { bolsas } = await parsearArquivo(Buffer.from("dummy"), "15072026HSL.PDF");
 
-    // Sem a guarda, o zip por índice produziria componente "VITA" e doação "?".
-    expect(bolsas).toHaveLength(0);
+    expect(bolsas).toHaveLength(4);
+    expect(bolsas[0]).toMatchObject({ abo: "AB", fatorRh: "P", instituicao: "B3087" });
+    expect(bolsas.filter((b) => b.urgencia === "vencido")).toHaveLength(2);
+    expect(bolsas[1]).toMatchObject({ doacao: "26002411", validade: "2026-03-05", abo: "O", fatorRh: "N" });
+  });
+
+  // Texto colorido é desenhado duas vezes na mesma coordenada; sem deduplicar, a
+  // instituição das linhas vermelhas viraria uma célula extra e deslocaria a linha.
+  test("célula duplicada no mesmo ponto (overprint) não desloca a linha", async () => {
+    const itens = [
+      { s: "Emissão: 15/07/2026 08:37", x: 460, y: 800 },
+      { s: "VITA", x: 51.7, y: 669.8 },
+      { s: "VITA", x: 51.7, y: 669.8 }, // overprint exato
+      { s: "26002411", x: 112.6, y: 669.8 },
+      { s: "CH", x: 189.4, y: 669.8 },
+      { s: "1", x: 223.8, y: 669.8 },
+      { s: "05/03/2026 23:59", x: 261.6, y: 669.8 },
+      { s: "AT - HSL", x: 349.4, y: 669.8 },
+      { s: "O", x: 518.7, y: 669.8 },
+      { s: "N", x: 559.5, y: 669.8 },
+    ];
+    mockPdfParse.mockResolvedValue({ text: "\n\n" + JSON.stringify(itens) });
+    const { bolsas } = await parsearArquivo(Buffer.from("dummy"), "15072026HSL.PDF");
+
+    expect(bolsas).toHaveLength(1);
+    expect(bolsas[0]).toMatchObject({ instituicao: "VITA", doacao: "26002411", componente: "CH", abo: "O", fatorRh: "N" });
+  });
+
+  // Fragmentos da mesma linha visual não têm Y idêntico; agrupar por igualdade
+  // exata quebraria a linha em pedaços e nenhuma bolsa seria extraída.
+  test("agrupa por Y com tolerância (fragmentos da mesma linha visual)", async () => {
+    const itens = [
+      { s: "VITA", x: 50, y: 669.8 },
+      { s: "26016874", x: 112, y: 670.4 }, // 0.6pt de diferença
+      { s: "CH", x: 189, y: 669.2 },
+      { s: "1", x: 223, y: 669.9 },
+      { s: "22/07/2026 23:59", x: 261, y: 670.1 },
+      { s: "AT - HSL", x: 349, y: 669.8 },
+      { s: "A", x: 519, y: 669.5 },
+      { s: "P", x: 559, y: 670.0 },
+    ];
+    mockPdfParse.mockResolvedValue({ text: "\n\n" + JSON.stringify(itens) });
+    const { bolsas } = await parsearArquivo(Buffer.from("dummy"), "x.pdf");
+
+    expect(bolsas).toHaveLength(1);
+    expect(bolsas[0]).toMatchObject({ doacao: "26016874", abo: "A", fatorRh: "P" });
   });
 });
 
-// ── Testes: desambiguação do código AT pelo código esperado ───────────────────
-// Reproduz 15072026HMON.PDF: "AT - HMONOPB3097" admite duas separações válidas —
-// HM+O+N+OPB3097 e HMON+O+P+B3097. O quantificador preguiçoso escolhia a
-// primeira, corrompendo o fator Rh (N em vez de P) e fazendo a rotina rejeitar o
-// arquivo por "agencia_incorreta" (HM ≠ HMON).
-
-const PDF_AT_AMBIGUO_HMON = `Emissão: 15/07/2026 08:09
-PULSA BH
-Loc. Arm.ABOFator RhDoaçãoComp.Seq.ValidadeInstituição
-Legenda :
-26019000CP  116/07/2026 23:59AT - HMONOPB3097
-26019003CP  116/07/2026 23:59AT - HMONAPB3097
-Total =>
-2
-001
-`;
-
-describe("parsearArquivo — desambiguação do código AT mesclado", () => {
+describe("parsearArquivo — PDF layout Analítico", () => {
   beforeEach(() => jest.clearAllMocks());
 
-  test("usa o código esperado para separar 'HMONOPB3097' como HMON+O+P", async () => {
-    mockPdfParse.mockResolvedValue({ text: PDF_AT_AMBIGUO_HMON });
-    const { bolsas, codigoAgencia } = await parsearArquivo(
-      Buffer.from("dummy"), "15072026HMON.PDF", "HMON"
-    );
-
-    expect(codigoAgencia).toBe("HMON");
-    expect(bolsas).toHaveLength(2);
-    expect(bolsas[0]).toMatchObject({
-      doacao: "26019000", componente: "CP", abo: "O", fatorRh: "P", instituicao: "B3097",
+  // 15072026HUB.PDF — colunas extras (Lavado/Refrac./Deleuc./Irrad.) entre a
+  // validade e a localização, e "Total : N" em vez de "Total => N".
+  test("HUB: 3 bolsas, ignorando as colunas SIM/NÃO intermediárias", async () => {
+    mockPdfParse.mockResolvedValue({
+      text: pdfPosicional([
+        ["PULSA BH"],
+        ["Estoque de Componentes - Analítico", "Emissão: 15/07/2026 08:47"],
+        ["Inst. Colet.", "Doação", "Comp.", "Seq.", "Validade", "Lavado", "Refrac.", "Deleuc.", "Irrad.", "Loc. Armazenamento", "Gr. ABO", "Fator RH", "CDE"],
+        ["VITA", "26016557", "CH", "1", "20/07/2026 23:59", "NÃO", "NÃO", "NÃO", "NÃO", "AT - HUB", "B", "N"],
+        ["VITA", "26017726", "CH", "3", "17/07/2026 23:59", "NÃO", "SIM", "SIM", "SIM", "AT - HUB", "O", "P"],
+        ["VITA", "26002400", "PFC", "1", "16/07/2026 00:22", "NÃO", "SIM", "NÃO", "NÃO", "AT - HUB", "A", "P"],
+        ["Total : 3"],
+      ]),
     });
-    expect(bolsas[1]).toMatchObject({ abo: "A", fatorRh: "P", instituicao: "B3097" });
+    const { bolsas, codigoAgencia, totalDeclarado } =
+      await parsearArquivo(Buffer.from("dummy"), "15072026HUB.PDF");
+
+    expect(codigoAgencia).toBe("HUB");
+    expect(totalDeclarado).toBe(3);
+    expect(bolsas).toHaveLength(3);
+    // O "N" de "NÃO" não pode ser confundido com Fator Rh negativo
+    expect(bolsas[1]).toMatchObject({ doacao: "26017726", componente: "CH", abo: "O", fatorRh: "P" });
+    expect(bolsas[2]).toMatchObject({ doacao: "26002400", componente: "PFC", validade: "2026-07-16", abo: "A" });
   });
 
-  test("sem código esperado, mantém a menor extensão de código (comportamento histórico)", async () => {
-    mockPdfParse.mockResolvedValue({ text: PDF_AT_AMBIGUO_HMON });
-    const { codigoAgencia, bolsas } = await parsearArquivo(Buffer.from("dummy"), "15072026HMON.PDF");
+  test("ABO 'AB' na coluna Gr. ABO é preservado", async () => {
+    mockPdfParse.mockResolvedValue({
+      text: pdfPosicional([
+        ["Estoque de Componentes - Analítico", "Emissão: 14/05/2026 12:26"],
+        ["Inst. Colet.", "Doação", "Comp.", "Seq.", "Validade", "Lavado", "Loc. Armazenamento", "Gr. ABO", "Fator RH"],
+        ["VITA", "26010489", "CH", "1", "16/05/2026 23:59", "NÃO", "AT - HIO", "AB", "P"],
+        ["Total : 1"],
+      ]),
+    });
+    const { bolsas, codigoAgencia } = await parsearArquivo(Buffer.from("dummy"), "14052026HIO.PDF");
 
-    expect(codigoAgencia).toBe("HM");
-    expect(bolsas[0]).toMatchObject({ abo: "O", fatorRh: "N", instituicao: "OPB3097" });
-  });
-
-  test("código esperado não quebra 'HSCUABP' (ABO=AB continua sendo HSCU+AB+P)", async () => {
-    mockPdfParse.mockResolvedValue({ text: PDF_COMPACTO_ABO_AB });
-    const { bolsas, codigoAgencia } = await parsearArquivo(
-      Buffer.from("dummy"), "14052026HSCU.PDF", "HSCU"
-    );
-
-    expect(codigoAgencia).toBe("HSCU");
-    expect(bolsas[0]).toMatchObject({ abo: "AB", fatorRh: "P" });
-  });
-
-  test("código esperado que não corresponde a nenhuma separação usa o fallback", async () => {
-    mockPdfParse.mockResolvedValue({ text: PDF_COMPACTO_PADRAO_A });
-    const { codigoAgencia, bolsas } = await parsearArquivo(
-      Buffer.from("dummy"), "14052026HSR.PDF", "XXXX"
-    );
-
-    expect(codigoAgencia).toBe("HSR");
-    expect(bolsas).toHaveLength(7);
+    expect(codigoAgencia).toBe("HIO");
+    expect(bolsas[0]).toMatchObject({ abo: "AB", fatorRh: "P", componente: "CH" });
   });
 });
+
 
 // ── Testes: formato inválido ──────────────────────────────────────────────────
 

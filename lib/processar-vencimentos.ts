@@ -101,7 +101,7 @@ export async function processarVencimentos(triggeredBy: "cron" | "manual" = "cro
       }
 
       const buffer = await baixarArquivo(arquivo.downloadUrl);
-      const parseResult = await parsearArquivo(buffer, arquivo.nome, agencia.codigo);
+      const parseResult = await parsearArquivo(buffer, arquivo.nome);
       const bolsasParsed = parseResult.bolsas;
 
       // Skip stale files — only process today's reports

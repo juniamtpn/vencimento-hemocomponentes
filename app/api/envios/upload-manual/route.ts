@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
   const buffer = Buffer.from(await arquivo.arrayBuffer());
   let parseResult;
   try {
-    parseResult = await parsearArquivo(buffer, arquivo.name, agencia.codigo);
+    parseResult = await parsearArquivo(buffer, arquivo.name);
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
     const hint = detail.includes("Formato não suportado")

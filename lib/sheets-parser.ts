@@ -16,6 +16,10 @@ export interface ParseResult {
   bolsas: BolsaParsed[];
   dataEmissao: string | null;   // ISO YYYY-MM-DD
   codigoAgencia: string | null; // e.g. "HMT"
+  // Total que o próprio relatório declara ("Total => 4"). Serve de conferência
+  // independente do parser: se diverge de bolsas.length, a leitura falhou.
+  // null quando o formato não declara total.
+  totalDeclarado?: number | null;
 }
 
 function excelDateToISO(value: unknown): string | null {
