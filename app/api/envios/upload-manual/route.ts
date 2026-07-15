@@ -51,6 +51,14 @@ export async function POST(request: NextRequest) {
 
   const bolsasParsed = parseResult.bolsas;
 
+  // PDF digitalizado como imagem — não há texto para ler em nenhum formato
+  if (parseResult.semCamadaTexto) {
+    return NextResponse.json({
+      error: "O PDF não contém texto.",
+      hint: "Este arquivo foi enviado como imagem digitalizada (escaneada ou fotografada), e o sistema não consegue ler os dados das bolsas nesse formato. Exporte o relatório direto do sistema em PDF, sem imprimir e escanear.",
+    }, { status: 422 });
+  }
+
   // Validate emission date — only today's reports are accepted
   if (parseResult.dataEmissao && parseResult.dataEmissao !== hoje) {
     return NextResponse.json({
@@ -64,6 +72,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       error: "O arquivo não corresponde à agência selecionada.",
       hint: `O relatório identifica a agência "${parseResult.codigoAgencia}", mas você selecionou "${agencia.codigo}". Verifique se está enviando o arquivo correto para esta agência.`,
+    }, { status: 422 });
+  }
+
+  // Confere a leitura contra o total declarado pelo próprio relatório
+  const totalDeclarado = parseResult.totalDeclarado;
+  if (totalDeclarado != null && bolsasParsed.length !== totalDeclarado) {
+    return NextResponse.json({
+      error: "A leitura do arquivo não confere.",
+      hint: `O sistema leu ${bolsasParsed.length} bolsa(s), mas o relatório declara ${totalDeclarado}. Os dados não foram publicados para não exibir um estoque incompleto. Exporte o relatório novamente e tente de novo; se repetir, avise o time de TI.`,
     }, { status: 422 });
   }
 

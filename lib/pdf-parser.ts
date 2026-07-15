@@ -134,6 +134,7 @@ export async function parsearPDF(buffer: Buffer): Promise<ParseResult> {
   const contagemCodigos = new Map<string, number>();
   let dataEmissao: string | null = null;
   let totalDeclarado: number | null = null;
+  let totalFragmentos = 0;
 
   // pdf-parse concatena o retorno de cada página com "\n\n"
   for (const pagina of data.text.split("\n\n")) {
@@ -145,6 +146,7 @@ export async function parsearPDF(buffer: Buffer): Promise<ParseResult> {
     } catch {
       continue;
     }
+    totalFragmentos += itens.length;
 
     for (const celulas of agruparEmLinhas(itens)) {
       const linha = celulas.join(" ");
@@ -175,5 +177,13 @@ export async function parsearPDF(buffer: Buffer): Promise<ParseResult> {
     }
   });
 
-  return { bolsas, dataEmissao, codigoAgencia, totalDeclarado };
+  return {
+    bolsas,
+    dataEmissao,
+    codigoAgencia,
+    totalDeclarado,
+    // Zero fragmentos = o PDF não tem texto, só imagem. Um relatório legítimo
+    // sem bolsas ainda traz cabeçalho, emissão e "Total => 0".
+    semCamadaTexto: totalFragmentos === 0,
+  };
 }

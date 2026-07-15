@@ -20,6 +20,10 @@ export interface ParseResult {
   // independente do parser: se diverge de bolsas.length, a leitura falhou.
   // null quando o formato não declara total.
   totalDeclarado?: number | null;
+  // PDF sem nenhum fragmento de texto — o relatório foi digitalizado como
+  // imagem. Distingue "não consegui ler" de "li e não havia bolsas", que são
+  // problemas diferentes e exigem ações diferentes da agência.
+  semCamadaTexto?: boolean;
 }
 
 function excelDateToISO(value: unknown): string | null {

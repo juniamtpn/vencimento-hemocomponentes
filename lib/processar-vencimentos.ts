@@ -104,50 +104,92 @@ export async function processarVencimentos(triggeredBy: "cron" | "manual" = "cro
       const parseResult = await parsearArquivo(buffer, arquivo.nome);
       const bolsasParsed = parseResult.bolsas;
 
+      // Limpa os registros anteriores da agência. Precisa acontecer antes das
+      // rejeições: um arquivo recusado não pode deixar as bolsas da execução
+      // anterior no painel como se ainda valessem.
+      const limparRegistrosDaAgencia = async () => {
+        const registrosExistentes = await db.query.registrosDiarios.findMany({
+          where: eq(registrosDiarios.agenciaId, agencia.id),
+        });
+        for (const reg of registrosExistentes) {
+          await db.delete(bolsas).where(eq(bolsas.registroId, reg.id));
+          await db.delete(registrosDiarios).where(eq(registrosDiarios.id, reg.id));
+        }
+      };
+
+      // Registra a recusa como "erro" e avisa o responsável. Sem isso a agência
+      // aparece como "sem arquivo" no painel — indistinguível de quem não enviou.
+      const rejeitar = async (
+        status: string,
+        motivo: Parameters<typeof notificarArquivoRejeitado>[0]["motivo"],
+        extra: Partial<Parameters<typeof notificarArquivoRejeitado>[0]> = {}
+      ) => {
+        await limparRegistrosDaAgencia();
+        await db.insert(registrosDiarios).values({
+          id: nanoid(),
+          agenciaId: agencia.id,
+          dataProcessamento: hoje,
+          totalBolsas: 0,
+          arquivoNome: arquivo!.nome,
+          status: "erro",
+        });
+
+        const email = emailPorAgencia.get(agencia.id);
+        if (email) {
+          await notificarArquivoRejeitado({
+            agencia: agencia.nome,
+            email,
+            nome: nomePorAgencia.get(agencia.id) ?? agencia.nome,
+            arquivoNome: arquivo!.nome,
+            motivo,
+            ...extra,
+          }).catch((e) =>
+            console.error(`[Processamento] Falha ao notificar rejeição de ${agencia.nome}:`, e)
+          );
+        }
+        resultados.push({ agencia: agencia.nome, codigo: agencia.codigo, status });
+      };
+
+      // PDF digitalizado como imagem: não há texto para ler, em nenhum formato.
+      // Nenhum ajuste de parser resolve — só a agência reexportando o relatório.
+      if (parseResult.semCamadaTexto) {
+        console.warn(`[Processamento] ${agencia.nome}: PDF sem camada de texto (digitalizado) — impossível ler.`);
+        await rejeitar("sem_camada_texto", "sem_texto");
+        return;
+      }
+
       // Skip stale files — only process today's reports
       if (parseResult.dataEmissao && parseResult.dataEmissao !== hoje) {
         console.warn(`[Processamento] ${agencia.nome}: emissão ${parseResult.dataEmissao} ≠ hoje ${hoje} — arquivo desatualizado, ignorando.`);
-        const emailDataInvalida = emailPorAgencia.get(agencia.id);
-        if (emailDataInvalida) {
-          await notificarArquivoRejeitado({
-            agencia: agencia.nome,
-            email: emailDataInvalida,
-            nome: nomePorAgencia.get(agencia.id) ?? agencia.nome,
-            arquivoNome: arquivo.nome,
-            motivo: "data_invalida",
-            dataArquivo: parseResult.dataEmissao,
-          });
-        }
-        resultados.push({ agencia: agencia.nome, codigo: agencia.codigo, status: "arquivo_desatualizado" });
+        await rejeitar("arquivo_desatualizado", "data_invalida", { dataArquivo: parseResult.dataEmissao });
         return;
       }
 
       // Skip files whose agency code doesn't match the expected agency
       if (parseResult.codigoAgencia && parseResult.codigoAgencia.toUpperCase() !== agencia.codigo.toUpperCase()) {
         console.warn(`[Processamento] ${agencia.nome}: código no arquivo "${parseResult.codigoAgencia}" ≠ agência esperada "${agencia.codigo}" — ignorando.`);
-        const emailAgenciaIncorreta = emailPorAgencia.get(agencia.id);
-        if (emailAgenciaIncorreta) {
-          await notificarArquivoRejeitado({
-            agencia: agencia.nome,
-            email: emailAgenciaIncorreta,
-            nome: nomePorAgencia.get(agencia.id) ?? agencia.nome,
-            arquivoNome: arquivo.nome,
-            motivo: "agencia_incorreta",
-            codigoArquivo: parseResult.codigoAgencia,
-            codigoEsperado: agencia.codigo,
-          });
-        }
-        resultados.push({ agencia: agencia.nome, codigo: agencia.codigo, status: "agencia_incorreta" });
+        await rejeitar("agencia_incorreta", "agencia_incorreta", {
+          codigoArquivo: parseResult.codigoAgencia,
+          codigoEsperado: agencia.codigo,
+        });
         return;
       }
 
-      const registrosExistentes = await db.query.registrosDiarios.findMany({
-        where: eq(registrosDiarios.agenciaId, agencia.id),
-      });
-      for (const reg of registrosExistentes) {
-        await db.delete(bolsas).where(eq(bolsas.registroId, reg.id));
-        await db.delete(registrosDiarios).where(eq(registrosDiarios.id, reg.id));
+      // Confere a leitura contra o total que o próprio relatório declara. É a
+      // única verificação independente do parser que temos: se divergir, alguma
+      // linha foi perdida ou lida a mais, e publicar o resultado significaria
+      // exibir um estoque incompleto sem ninguém perceber.
+      const totalDeclarado = parseResult.totalDeclarado;
+      if (totalDeclarado != null && bolsasParsed.length !== totalDeclarado) {
+        console.warn(`[Processamento] ${agencia.nome}: extraídas ${bolsasParsed.length} bolsa(s) mas o relatório declara ${totalDeclarado} — leitura não confiável.`);
+        await rejeitar("total_divergente", "total_divergente", {
+          totalExtraido: bolsasParsed.length,
+          totalDeclarado,
+        });
+        return;
       }
+
+      await limparRegistrosDaAgencia();
 
       const registroId = nanoid();
       await db.insert(registrosDiarios).values({

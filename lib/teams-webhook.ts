@@ -142,27 +142,45 @@ export async function notificarArquivoRejeitado(dados: {
   email: string;
   nome: string;
   arquivoNome: string;
-  motivo: "data_invalida" | "agencia_incorreta";
+  motivo: "data_invalida" | "agencia_incorreta" | "sem_texto" | "total_divergente";
   dataArquivo?: string;
   codigoArquivo?: string;
   codigoEsperado?: string;
+  totalExtraido?: number;
+  totalDeclarado?: number;
 }): Promise<void> {
   if (!dados.email) return;
+
+  const rodape = `<p style="color:#888;font-size:12px;">— PULSA Vencimentos</p>`;
+  const abertura =
+    `<p>🚨 <b>${dados.nome}</b>,</p>` +
+    `<p>O arquivo <b>${dados.arquivoNome}</b> da agência <b>${dados.agencia}</b> foi recebido, mas <b>não pôde ser processado</b>.</p>`;
 
   let corpo: string;
   if (dados.motivo === "data_invalida") {
     corpo =
-      `<p>🚨 <b>${dados.nome}</b>,</p>` +
-      `<p>O arquivo <b>${dados.arquivoNome}</b> da agência <b>${dados.agencia}</b> foi recebido, mas <b>não pôde ser processado</b>.</p>` +
+      abertura +
       `<p><b>Motivo:</b> A data de emissão do relatório é <b>${fmtDataBR(dados.dataArquivo!)}</b>, mas hoje é <b>${new Date().toLocaleDateString("pt-BR")}</b>. Somente relatórios do dia atual são aceitos.</p>` +
       `<p>Por favor, exporte um relatório atualizado e reenvie para a pasta do Google Drive.</p>` +
-      `<p style="color:#888;font-size:12px;">— PULSA Vencimentos</p>`;
-  } else {
+      rodape;
+  } else if (dados.motivo === "agencia_incorreta") {
     corpo =
       `<p>🚨 <b>${dados.nome}</b>,</p>` +
       `<p>O arquivo <b>${dados.arquivoNome}</b> foi recebido na pasta da agência <b>${dados.codigoEsperado}</b>, mas o relatório identifica a agência <b>${dados.codigoArquivo}</b>.</p>` +
       `<p>Por favor, verifique se o arquivo correto foi enviado para a pasta de <b>${dados.agencia}</b> no Google Drive.</p>` +
-      `<p style="color:#888;font-size:12px;">— PULSA Vencimentos</p>`;
+      rodape;
+  } else if (dados.motivo === "sem_texto") {
+    corpo =
+      abertura +
+      `<p><b>Motivo:</b> O PDF não contém texto — ele foi enviado como <b>imagem digitalizada</b> (escaneada ou fotografada). O sistema não consegue ler os dados das bolsas nesse formato.</p>` +
+      `<p><b>Como resolver:</b> exporte o relatório <b>direto do sistema em PDF</b>, sem imprimir e escanear, e reenvie para a pasta do Google Drive.</p>` +
+      rodape;
+  } else {
+    corpo =
+      abertura +
+      `<p><b>Motivo:</b> O sistema leu <b>${dados.totalExtraido}</b> bolsa(s), mas o próprio relatório declara <b>${dados.totalDeclarado}</b>. Como a leitura não confere, os dados não foram publicados — exibir um estoque incompleto seria pior que não exibir.</p>` +
+      `<p>Por favor, exporte o relatório novamente e reenvie. Se o problema repetir, avise o time de TI: o arquivo pode estar num formato que o sistema ainda não lê corretamente.</p>` +
+      rodape;
   }
 
   await enviarEmail(

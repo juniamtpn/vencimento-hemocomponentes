@@ -242,14 +242,45 @@ describe("parsearArquivo — PDF (.pdf)", () => {
     expect(bolsas).toHaveLength(5);
   });
 
-  test("PDF sem camada de texto (escaneado) retorna vazio em vez de lançar", async () => {
+  test("PDF sem camada de texto (escaneado) é sinalizado, não confundido com vazio", async () => {
     // 15072026HDMU.PDF: o relatório foi digitalizado como imagem — o pdf.js não
-    // devolve nenhum fragmento de texto. Falhar visível é o comportamento correto.
+    // devolve nenhum fragmento de texto. Precisa ser distinguível de um relatório
+    // legítimo sem bolsas: as ações são diferentes (reexportar vs. nada a fazer).
     mockPdfParse.mockResolvedValue({ text: "\n\n" });
-    const { bolsas, dataEmissao, totalDeclarado } = await parsearArquivo(Buffer.from("dummy"), "15072026HDMU.PDF");
+    const { bolsas, dataEmissao, totalDeclarado, semCamadaTexto } =
+      await parsearArquivo(Buffer.from("dummy"), "15072026HDMU.PDF");
+
+    expect(semCamadaTexto).toBe(true);
     expect(bolsas).toHaveLength(0);
     expect(dataEmissao).toBeNull();
     expect(totalDeclarado).toBeNull();
+  });
+
+  test("relatório legítimo sem bolsas NÃO é marcado como sem camada de texto", async () => {
+    mockPdfParse.mockResolvedValue({ text: PDF_SEM_DADOS });
+    const { bolsas, semCamadaTexto, totalDeclarado } =
+      await parsearArquivo(Buffer.from("dummy"), "vazio.pdf");
+
+    expect(semCamadaTexto).toBe(false);
+    expect(bolsas).toHaveLength(0);
+    expect(totalDeclarado).toBe(0);
+  });
+
+  test("total declarado divergente é exposto para a rotina barrar a publicação", async () => {
+    // O relatório afirma 3 bolsas mas só 2 linhas são legíveis: a rotina precisa
+    // enxergar a divergência em vez de publicar um estoque incompleto.
+    mockPdfParse.mockResolvedValue({
+      text: pdfPosicional([
+        ["PULSA BH", "Emissão: 15/07/2026 08:59"],
+        ["B3087", "26010111", "CH", "1", "12/05/2026 23:59", "AT - HMT", "B", "P"],
+        ["B3087", "26014090", "CP", "1", "09/05/2026 23:59", "AT - HMT", "O", "P"],
+        ["Total =>", "3"],
+      ]),
+    });
+    const { bolsas, totalDeclarado } = await parsearArquivo(Buffer.from("dummy"), "x.pdf");
+
+    expect(bolsas).toHaveLength(2);
+    expect(totalDeclarado).toBe(3);
   });
 });
 
