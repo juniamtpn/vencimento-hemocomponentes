@@ -172,8 +172,9 @@ export async function notificarArquivoRejeitado(dados: {
   } else if (dados.motivo === "sem_texto") {
     corpo =
       abertura +
-      `<p><b>Motivo:</b> O PDF não contém texto — ele foi enviado como <b>imagem digitalizada</b> (escaneada ou fotografada). O sistema não consegue ler os dados das bolsas nesse formato.</p>` +
-      `<p><b>Como resolver:</b> exporte o relatório <b>direto do sistema em PDF</b>, sem imprimir e escanear, e reenvie para a pasta do Google Drive.</p>` +
+      `<p><b>Motivo:</b> O relatório foi emitido no <b>layout antigo do HEMOTE (Grupo Vita)</b>, que gera a página inteira como imagem. Não há texto no arquivo, então o sistema não consegue ler as bolsas — nem com ajuste de programa.</p>` +
+      `<p><b>Como resolver:</b> emita o relatório no <b>layout novo (Pulsa)</b>. Se a sua tela do HEMOTE só oferece o layout antigo, acione o suporte do HEMOTE para migrar a sua agência.</p>` +
+      `<p>⚠️ Enquanto isso, <b>as bolsas desta agência não aparecem no painel</b> e precisam ser conferidas manualmente.</p>` +
       rodape;
   } else {
     corpo =

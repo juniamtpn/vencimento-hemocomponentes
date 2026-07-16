@@ -237,7 +237,28 @@ export async function processarVencimentos(triggeredBy: "cron" | "manual" = "cro
         bolsas: bolsasParsed.length,
       });
     } catch (error) {
+      // Uma exceção aqui não pode fazer a agência sumir do painel: sem registro
+      // ela aparece como "sem arquivo" — indistinguível de quem não enviou nada.
       console.error(`[Processamento] Erro em ${agencia.nome}:`, error);
+      try {
+        const registrosExistentes = await db.query.registrosDiarios.findMany({
+          where: eq(registrosDiarios.agenciaId, agencia.id),
+        });
+        for (const reg of registrosExistentes) {
+          await db.delete(bolsas).where(eq(bolsas.registroId, reg.id));
+          await db.delete(registrosDiarios).where(eq(registrosDiarios.id, reg.id));
+        }
+        await db.insert(registrosDiarios).values({
+          id: nanoid(),
+          agenciaId: agencia.id,
+          dataProcessamento: hoje,
+          totalBolsas: 0,
+          status: "erro",
+          motivoErro: "falha_leitura",
+        });
+      } catch (e) {
+        console.error(`[Processamento] Falha ao registrar erro de ${agencia.nome}:`, e);
+      }
       resultados.push({ agencia: agencia.nome, codigo: agencia.codigo, status: "erro" });
     }
   }

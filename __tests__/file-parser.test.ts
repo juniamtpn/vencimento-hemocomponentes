@@ -242,18 +242,66 @@ describe("parsearArquivo — PDF (.pdf)", () => {
     expect(bolsas).toHaveLength(5);
   });
 
-  test("PDF sem camada de texto (escaneado) é sinalizado, não confundido com vazio", async () => {
-    // 15072026HDMU.PDF: o relatório foi digitalizado como imagem — o pdf.js não
-    // devolve nenhum fragmento de texto. Precisa ser distinguível de um relatório
-    // legítimo sem bolsas: as ações são diferentes (reexportar vs. nada a fazer).
+  test("PDF do layout antigo (Vita) é sinalizado, não confundido com vazio", async () => {
+    // 16072026HDMU.PDF e outros 5: o layout antigo do HEMOTE gera a página
+    // inteira como imagem (1123x805, zero fontes) — o pdf.js não devolve nenhum
+    // fragmento. Precisa ser distinguível de um relatório legítimo sem bolsas:
+    // as ações são diferentes (migrar de layout vs. nada a fazer).
     mockPdfParse.mockResolvedValue({ text: "\n\n" });
     const { bolsas, dataEmissao, totalDeclarado, semCamadaTexto } =
-      await parsearArquivo(Buffer.from("dummy"), "15072026HDMU.PDF");
+      await parsearArquivo(Buffer.from("dummy"), "16072026HDMU.PDF");
 
     expect(semCamadaTexto).toBe(true);
     expect(bolsas).toHaveLength(0);
     expect(dataEmissao).toBeNull();
     expect(totalDeclarado).toBeNull();
+  });
+
+  test("falha do render NÃO é reportada como layout antigo", async () => {
+    // pdf-parse engole exceções do pagerender e devolve "" para a página. Sem o
+    // marcador de falha, um relatório íntegro cujo render quebrou seria acusado
+    // de "layout antigo" e a agência receberia uma instrução errada.
+    mockPdfParse.mockResolvedValue({ text: '\n\n{"__falha":"transform undefined"}' });
+
+    await expect(
+      parsearArquivo(Buffer.from("dummy"), "x.pdf")
+    ).rejects.toThrow(/Falha ao extrair texto/);
+  });
+
+  test("pagerender ignorado (texto corrido) é erro, não layout antigo", async () => {
+    // Se o pagerender não for aplicado, o pdf-parse devolve texto corrido. Cair
+    // no caminho de "sem texto" faria o sistema culpar o arquivo por um defeito
+    // nosso — e em massa, já que atingiria todos os arquivos de uma vez.
+    mockPdfParse.mockResolvedValue({ text: "\n\nEmissão: 16/07/2026 08:59\nTotal => 4" });
+
+    await expect(
+      parsearArquivo(Buffer.from("dummy"), "x.pdf")
+    ).rejects.toThrow(/Extração posicional não foi aplicada/);
+  });
+
+  test("item sem transform é descartado sem derrubar a página", async () => {
+    // Marcadores de conteúdo do pdf.js não têm `transform`. Descartar é correto;
+    // lançar faria a página inteira virar "sem texto".
+    const itens = [
+      { s: "PULSA BH" }, // sem transform
+      { s: "Emissão: 16/07/2026 08:59", x: 460, y: 800 },
+      { s: "VITA", x: 50, y: 700 },
+      { s: "26016874", x: 112, y: 700 },
+      { s: "CH", x: 189, y: 700 },
+      { s: "1", x: 223, y: 700 },
+      { s: "22/07/2026 23:59", x: 261, y: 700 },
+      { s: "AT - HSL", x: 349, y: 700 },
+      { s: "A", x: 519, y: 700 },
+      { s: "P", x: 559, y: 700 },
+    ];
+    // O render real filtra itens sem transform; aqui simulamos a saída já filtrada
+    mockPdfParse.mockResolvedValue({
+      text: "\n\n" + JSON.stringify(itens.filter((i) => "x" in i)),
+    });
+    const { bolsas, semCamadaTexto } = await parsearArquivo(Buffer.from("dummy"), "x.pdf");
+
+    expect(semCamadaTexto).toBe(false);
+    expect(bolsas).toHaveLength(1);
   });
 
   test("relatório legítimo sem bolsas NÃO é marcado como sem camada de texto", async () => {
@@ -369,7 +417,7 @@ describe("parsearArquivo — Sentry captureMessage para arquivo vazio", () => {
   });
 
   test("dispara captureMessage quando PDF não retorna bolsas", async () => {
-    mockPdfParse.mockResolvedValue({ text: "sem dados válidos" });
+    mockPdfParse.mockResolvedValue({ text: PDF_SEM_DADOS });
     await parsearArquivo(Buffer.from("dummy"), "vazio.pdf");
     expect(mockSentry.captureMessage).toHaveBeenCalledWith(
       expect.stringContaining("vazio.pdf"),
@@ -513,6 +561,57 @@ describe("parsearArquivo — PDF layout Analítico", () => {
     // O "N" de "NÃO" não pode ser confundido com Fator Rh negativo
     expect(bolsas[1]).toMatchObject({ doacao: "26017726", componente: "CH", abo: "O", fatorRh: "P" });
     expect(bolsas[2]).toMatchObject({ doacao: "26002400", componente: "PFC", validade: "2026-07-16", abo: "A" });
+  });
+
+  // 16072026HMDSA.PDF — conferido contra a imagem renderizada. Traz o layout
+  // Analítico com instituição variando por linha (B3097 no meio de VITAs).
+  test("HMDSA: 7 bolsas, instituição por linha, uma vencendo no dia da emissão", async () => {
+    const linha = (inst: string, doacao: string, comp: string, val: string, irrad: string, abo: string) =>
+      [inst, doacao, comp, "1", val, "NÃO", "NÃO", "NÃO", irrad, "AT - HMDSA", abo, "P"];
+    mockPdfParse.mockResolvedValue({
+      text: pdfPosicional([
+        ["Estoque de Componentes - Analítico", "Emissão: 16/07/2026 09:39"],
+        ["Inst. Colet.", "Doação", "Comp.", "Seq.", "Validade", "Lavado", "Refrac.", "Deleuc.", "Irrad.", "Loc. Armazenamento", "Gr. ABO", "Fator RH", "CDE"],
+        linha("VITA", "26018246", "CH", "21/07/2026 23:59", "SIM", "A"),
+        linha("B3097", "26019003", "CP", "16/07/2026 23:59", "NÃO", "A"),
+        linha("VITA", "26020546", "CP", "18/07/2026 23:59", "NÃO", "B"),
+        linha("VITA", "26020622", "CP", "19/07/2026 23:59", "NÃO", "B"),
+        linha("VITA", "26020631", "CP", "19/07/2026 23:59", "NÃO", "B"),
+        linha("VITA", "26020633", "CP", "19/07/2026 23:59", "NÃO", "A"),
+        linha("VITA", "26020653", "CP", "19/07/2026 23:59", "NÃO", "O"),
+        ["Total : 7"],
+      ]),
+    });
+    const { bolsas, codigoAgencia, totalDeclarado } =
+      await parsearArquivo(Buffer.from("dummy"), "16072026HMDSA.PDF");
+
+    expect(codigoAgencia).toBe("HMDSA");
+    expect(totalDeclarado).toBe(7);
+    expect(bolsas).toHaveLength(7);
+    // A instituição é por linha — não pode ser deduzida da mais frequente
+    expect(bolsas[1]).toMatchObject({ instituicao: "B3097", doacao: "26019003", validade: "2026-07-16" });
+    expect(bolsas[0]).toMatchObject({ instituicao: "VITA", doacao: "26018246", componente: "CH", abo: "A" });
+    expect(bolsas.map((b) => b.abo)).toEqual(["A", "A", "B", "B", "B", "A", "O"]);
+  });
+
+  // 16072026HMDC.PDF — traz o componente CPAD, que não existia nos relatórios
+  // anteriores. O parser lê o componente da célula, então códigos novos passam
+  // sem precisar de alteração.
+  test("HMDC: componente CPAD (código novo) é lido sem lista fixa", async () => {
+    mockPdfParse.mockResolvedValue({
+      text: pdfPosicional([
+        ["Estoque de Componentes - Analítico", "Emissão: 16/07/2026 09:44"],
+        ["Inst. Colet.", "Doação", "Comp.", "Seq.", "Validade", "Lavado", "Refrac.", "Deleuc.", "Irrad.", "Loc. Armazenamento", "Gr. ABO", "Fator RH", "CDE"],
+        ["VITA", "26020565", "CP", "1", "18/07/2026 23:59", "NÃO", "NÃO", "NÃO", "SIM", "AT - HMDC", "O", "P"],
+        ["VITA", "26020629", "CPAD", "1", "19/07/2026 23:59", "NÃO", "NÃO", "SIM", "SIM", "AT - HMDC", "AB", "P"],
+        ["VITA", "26018408", "PFC", "1", "17/07/2026 01:44", "NÃO", "SIM", "NÃO", "NÃO", "AT - HMDC", "O", "P"],
+        ["Total : 3"],
+      ]),
+    });
+    const { bolsas } = await parsearArquivo(Buffer.from("dummy"), "16072026HMDC.PDF");
+
+    expect(bolsas).toHaveLength(3);
+    expect(bolsas[1]).toMatchObject({ componente: "CPAD", abo: "AB", fatorRh: "P" });
   });
 
   test("ABO 'AB' na coluna Gr. ABO é preservado", async () => {

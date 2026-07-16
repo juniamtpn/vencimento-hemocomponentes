@@ -28,20 +28,34 @@ interface ItemPosicional {
 // observada sem juntar linhas vizinhas (o espaçamento entre linhas é ~15pt).
 const TOLERANCIA_Y = 2;
 
+// pdf-parse engole qualquer exceção do pagerender e devolve "" para a página
+// (lib/pdf-parse.js: `.catch(() => "")`). Sem um marcador explícito, uma falha
+// aqui seria indistinguível de uma página sem texto — e um relatório íntegro
+// seria reportado à agência como "PDF escaneado". Por isso este render nunca
+// lança: ou devolve os itens, ou devolve o erro como dado.
+interface FalhaRender {
+  __falha: string;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function renderItensPosicionais(pageData: any): Promise<string> {
   return pageData
     .getTextContent({ normalizeWhitespace: false, disableCombineTextItems: false })
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .then((textContent: any) =>
-      JSON.stringify(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        textContent.items.map((item: any): ItemPosicional => ({
-          s: item.str,
-          x: item.transform[4],
-          y: item.transform[5],
-        }))
-      )
+    .then((textContent: any) => {
+      const itens: ItemPosicional[] = [];
+      // Itens sem `transform` (p.ex. marcadores de conteúdo) não são texto
+      // posicionável: descartar é correto, derrubar a página inteira não.
+      for (const item of textContent?.items ?? []) {
+        if (typeof item?.str !== "string") continue;
+        const t = item.transform;
+        if (!Array.isArray(t) || typeof t[4] !== "number" || typeof t[5] !== "number") continue;
+        itens.push({ s: item.str, x: t[4], y: t[5] });
+      }
+      return JSON.stringify(itens);
+    })
+    .catch((err: unknown) =>
+      JSON.stringify({ __falha: err instanceof Error ? err.message : String(err) } as FalhaRender)
     );
 }
 
@@ -140,12 +154,21 @@ export async function parsearPDF(buffer: Buffer): Promise<ParseResult> {
   for (const pagina of data.text.split("\n\n")) {
     if (!pagina.trim()) continue;
 
-    let itens: ItemPosicional[];
+    let conteudo: ItemPosicional[] | FalhaRender;
     try {
-      itens = JSON.parse(pagina);
+      conteudo = JSON.parse(pagina);
     } catch {
-      continue;
+      // Não é o JSON que nosso render produz: o pagerender não chegou a rodar e
+      // o pdf-parse caiu no render padrão. Tratar como falha, não como "sem texto".
+      throw new Error(
+        `[PDF] Extração posicional não foi aplicada (recebido texto corrido). Trecho: ${pagina.slice(0, 80)}`
+      );
     }
+    if (!Array.isArray(conteudo)) {
+      throw new Error(`[PDF] Falha ao extrair texto da página: ${conteudo.__falha}`);
+    }
+
+    const itens = conteudo;
     totalFragmentos += itens.length;
 
     for (const celulas of agruparEmLinhas(itens)) {
